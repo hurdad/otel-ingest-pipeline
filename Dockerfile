@@ -61,6 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 \
     libgcc-s1 \
     libjemalloc2 \
+    libgrpc++1.51 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
