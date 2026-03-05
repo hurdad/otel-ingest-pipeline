@@ -5,11 +5,9 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
-    git \
-    pkg-config \
     protobuf-compiler \
     libprotobuf-dev \
-    grpc-proto \
+    protobuf-compiler-grpc \
     libgrpc++-dev \
     zlib1g-dev \
     libgtest-dev \
@@ -18,8 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /src
 COPY . .
-
-RUN git submodule update --init --recursive
 
 RUN cmake -S . -B build \
     -DCMAKE_BUILD_TYPE=Release \
