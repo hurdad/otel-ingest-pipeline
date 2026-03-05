@@ -49,7 +49,7 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       GATEWAY_LISTEN_ADDR: 0.0.0.0:4317
-      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
       OTEL_SERVICE_NAME: otel-otlp-gateway
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=otel-telemetry-pipeline
 
@@ -67,7 +67,7 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       NATS_STREAM: OTEL_TELEMETRY
-      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
       OTEL_SERVICE_NAME: jetstream-clickhouse-loader
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=otel-telemetry-pipeline
 
