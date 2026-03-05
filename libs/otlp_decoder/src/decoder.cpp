@@ -38,6 +38,7 @@ std::vector<MetricRow> DecodeMetrics(const std::string& payload) {
   if (!req.ParseFromString(payload)) {
     return {};
   }
+  using NDP = opentelemetry::proto::metrics::v1::NumberDataPoint;
   std::vector<MetricRow> rows;
   for (const auto& rm : req.resource_metrics()) {
     std::string service_name = "unknown";
@@ -46,7 +47,30 @@ std::vector<MetricRow> DecodeMetrics(const std::string& payload) {
     }
     for (const auto& sm : rm.scope_metrics()) {
       for (const auto& metric : sm.metrics()) {
-        rows.push_back({0, service_name, metric.name(), 0.0});
+        const auto add = [&](uint64_t ts, double value) {
+          rows.push_back({ts, service_name, metric.name(), value});
+        };
+        const auto ndp_value = [](const NDP& dp) -> double {
+          return dp.value_case() == NDP::kAsInt ? static_cast<double>(dp.as_int())
+                                                : dp.as_double();
+        };
+        if (metric.has_gauge()) {
+          for (const auto& dp : metric.gauge().data_points()) {
+            add(dp.time_unix_nano(), ndp_value(dp));
+          }
+        } else if (metric.has_sum()) {
+          for (const auto& dp : metric.sum().data_points()) {
+            add(dp.time_unix_nano(), ndp_value(dp));
+          }
+        } else if (metric.has_histogram()) {
+          for (const auto& dp : metric.histogram().data_points()) {
+            add(dp.time_unix_nano(), dp.sum());
+          }
+        } else if (metric.has_summary()) {
+          for (const auto& dp : metric.summary().data_points()) {
+            add(dp.time_unix_nano(), dp.sum());
+          }
+        }
       }
     }
   }

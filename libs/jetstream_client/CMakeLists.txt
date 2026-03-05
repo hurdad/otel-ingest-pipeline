@@ -3,3 +3,7 @@ add_library(jetstream_client STATIC
 
 target_include_directories(jetstream_client PUBLIC include)
 target_link_libraries(jetstream_client PUBLIC telemetry)
+
+if(TARGET natscpp)
+  target_link_libraries(jetstream_client PRIVATE natscpp)
+endif()

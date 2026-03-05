@@ -6,8 +6,9 @@
 
 class ClickHouseBatcher {
  public:
-  ClickHouseBatcher()
-      : writer_("localhost", 9000, "default"),
+  ClickHouseBatcher(const std::string& host = "localhost", uint16_t port = 9000,
+                    const std::string& database = "default")
+      : writer_(host, port, database),
         trace_batch_(50000, std::chrono::seconds(2)),
         metric_batch_(50000, std::chrono::seconds(2)),
         log_batch_(50000, std::chrono::seconds(2)) {}

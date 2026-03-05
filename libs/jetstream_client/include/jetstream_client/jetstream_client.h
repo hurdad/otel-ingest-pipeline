@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -14,9 +15,12 @@ struct Message {
 class JetStreamPublisher {
  public:
   explicit JetStreamPublisher(std::string url);
+  ~JetStreamPublisher();
   bool Publish(const std::string& subject, const void* data, size_t size);
 
  private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
   std::string url_;
 };
 
@@ -25,9 +29,12 @@ class JetStreamConsumer {
   using Handler = std::function<void(const Message&)>;
 
   JetStreamConsumer(std::string url, std::string stream, std::vector<std::string> subjects);
+  ~JetStreamConsumer();
   void Poll(const Handler& handler);
 
  private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
   std::string url_;
   std::string stream_;
   std::vector<std::string> subjects_;

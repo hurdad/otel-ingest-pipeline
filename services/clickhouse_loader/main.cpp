@@ -1,8 +1,10 @@
+#include "clickhouse_batcher.cpp"
 #include "jetstream_client/jetstream_client.h"
 #include "telemetry/tracer.h"
 
 #include <chrono>
 #include <cstdlib>
+#include <iostream>
 #include <string>
 #include <thread>
 
@@ -21,12 +23,33 @@ std::string GetEnvOrDefault(const char* key, const char* fallback) {
 int main() {
   telemetry::InitTelemetry();
 
-  jetstream_client::JetStreamConsumer consumer(GetEnvOrDefault("NATS_URL", "nats://localhost:4222"),
-                                                GetEnvOrDefault("NATS_STREAM", "OTEL_TELEMETRY"),
-                                                {"otel.traces", "otel.metrics", "otel.logs"});
+  const std::string nats_url    = GetEnvOrDefault("NATS_URL", "nats://localhost:4222");
+  const std::string nats_stream = GetEnvOrDefault("NATS_STREAM", "OTEL_TELEMETRY");
+  const std::string ch_host     = GetEnvOrDefault("CLICKHOUSE_HOST", "localhost");
+  const uint16_t    ch_port     = static_cast<uint16_t>(
+      std::stoul(GetEnvOrDefault("CLICKHOUSE_PORT", "9000")));
+  const std::string ch_database = GetEnvOrDefault("CLICKHOUSE_DATABASE", "default");
+
+  std::clog << "Starting jetstream-clickhouse-loader\n"
+            << "  NATS: " << nats_url << " stream=" << nats_stream << '\n'
+            << "  ClickHouse: " << ch_host << ':' << ch_port << '/' << ch_database << '\n';
+
+  ClickHouseBatcher batcher(ch_host, ch_port, ch_database);
+
+  jetstream_client::JetStreamConsumer consumer(
+      nats_url, nats_stream, {"otel.traces", "otel.metrics", "otel.logs"});
 
   while (true) {
-    consumer.Poll([](const jetstream_client::Message&) {});
+    consumer.Poll([&batcher](const jetstream_client::Message& msg) {
+      if (msg.subject == "otel.traces") {
+        batcher.ProcessTraces(msg.payload);
+      } else if (msg.subject == "otel.metrics") {
+        batcher.ProcessMetrics(msg.payload);
+      } else if (msg.subject == "otel.logs") {
+        batcher.ProcessLogs(msg.payload);
+      }
+    });
+    batcher.FlushAll();
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 

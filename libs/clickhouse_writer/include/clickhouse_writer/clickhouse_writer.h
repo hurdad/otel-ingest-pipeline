@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -11,12 +12,15 @@ namespace clickhouse_writer {
 class ClickHouseWriter {
  public:
   ClickHouseWriter(std::string host, uint16_t port, std::string database);
+  ~ClickHouseWriter();
 
   void InsertTraces(const std::vector<otlp_decoder::TraceRow>& rows);
   void InsertMetrics(const std::vector<otlp_decoder::MetricRow>& rows);
   void InsertLogs(const std::vector<otlp_decoder::LogRow>& rows);
 
  private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
   std::string host_;
   uint16_t port_;
   std::string database_;
