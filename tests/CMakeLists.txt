@@ -10,7 +10,8 @@ target_link_libraries(otlp_decoder_tests PRIVATE
 add_test(NAME otlp_decoder_tests COMMAND otlp_decoder_tests)
 
 add_executable(clickhouse_writer_tests
-  clickhouse_writer_tests.cpp)
+  clickhouse_writer_tests.cpp
+  batch_insert_test.cpp)
 target_link_libraries(clickhouse_writer_tests PRIVATE clickhouse_writer GTest::gtest GTest::gtest_main)
 add_test(NAME clickhouse_writer_tests COMMAND clickhouse_writer_tests)
 
