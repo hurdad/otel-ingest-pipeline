@@ -5,6 +5,7 @@
 #include "clickhouse/client.h"
 #include "clickhouse/columns/date.h"
 #include "clickhouse/columns/lowcardinality.h"
+#include "clickhouse/columns/map.h"
 #include "clickhouse/columns/numeric.h"
 #include "clickhouse/columns/string.h"
 #include "telemetry/tracer.h"
@@ -119,23 +120,72 @@ void ClickHouseWriter::InsertLogs(const std::vector<otlp_decoder::LogRow>& rows)
   try {
     auto client = impl_->connect();
 
-    auto ts_col       = std::make_shared<clickhouse::ColumnDateTime64>(9);
-    auto svc_col      = std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
-    auto severity_col = std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
-    auto body_col     = std::make_shared<clickhouse::ColumnString>();
+    auto ts_col = std::make_shared<clickhouse::ColumnDateTime64>(9);
+    auto trace_id_col = std::make_shared<clickhouse::ColumnString>();
+    auto span_id_col = std::make_shared<clickhouse::ColumnString>();
+    auto trace_flags_col = std::make_shared<clickhouse::ColumnUInt8>();
+    auto severity_text_col =
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto severity_number_col = std::make_shared<clickhouse::ColumnUInt8>();
+    auto svc_col = std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto body_col = std::make_shared<clickhouse::ColumnString>();
+    auto resource_schema_url_col =
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto resource_attributes_col =
+        std::make_shared<clickhouse::ColumnMapT<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>,
+                                                 clickhouse::ColumnString>>(
+            std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>(),
+            std::make_shared<clickhouse::ColumnString>());
+    auto scope_schema_url_col =
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto scope_name_col = std::make_shared<clickhouse::ColumnString>();
+    auto scope_version_col =
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto scope_attributes_col =
+        std::make_shared<clickhouse::ColumnMapT<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>,
+                                                 clickhouse::ColumnString>>(
+            std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>(),
+            std::make_shared<clickhouse::ColumnString>());
+    auto log_attributes_col =
+        std::make_shared<clickhouse::ColumnMapT<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>,
+                                                 clickhouse::ColumnString>>(
+            std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>(),
+            std::make_shared<clickhouse::ColumnString>());
 
     for (const auto& row : rows) {
       ts_col->Append(static_cast<int64_t>(row.timestamp_ns));
+      trace_id_col->Append(row.trace_id);
+      span_id_col->Append(row.span_id);
+      trace_flags_col->Append(row.trace_flags);
+      severity_text_col->Append(std::string_view(row.severity_text));
+      severity_number_col->Append(row.severity_number);
       svc_col->Append(std::string_view(row.service_name));
-      severity_col->Append(std::string_view(row.severity_text));
       body_col->Append(row.body);
+      resource_schema_url_col->Append(std::string_view(row.resource_schema_url));
+      resource_attributes_col->Append(row.resource_attributes);
+      scope_schema_url_col->Append(std::string_view(row.scope_schema_url));
+      scope_name_col->Append(row.scope_name);
+      scope_version_col->Append(std::string_view(row.scope_version));
+      scope_attributes_col->Append(row.scope_attributes);
+      log_attributes_col->Append(row.log_attributes);
     }
 
     clickhouse::Block block;
-    block.AppendColumn("timestamp",     ts_col);
-    block.AppendColumn("service_name",  svc_col);
-    block.AppendColumn("severity_text", severity_col);
-    block.AppendColumn("body",          body_col);
+    block.AppendColumn("Timestamp", ts_col);
+    block.AppendColumn("TraceId", trace_id_col);
+    block.AppendColumn("SpanId", span_id_col);
+    block.AppendColumn("TraceFlags", trace_flags_col);
+    block.AppendColumn("SeverityText", severity_text_col);
+    block.AppendColumn("SeverityNumber", severity_number_col);
+    block.AppendColumn("ServiceName", svc_col);
+    block.AppendColumn("Body", body_col);
+    block.AppendColumn("ResourceSchemaUrl", resource_schema_url_col);
+    block.AppendColumn("ResourceAttributes", resource_attributes_col);
+    block.AppendColumn("ScopeSchemaUrl", scope_schema_url_col);
+    block.AppendColumn("ScopeName", scope_name_col);
+    block.AppendColumn("ScopeVersion", scope_version_col);
+    block.AppendColumn("ScopeAttributes", scope_attributes_col);
+    block.AppendColumn("LogAttributes", log_attributes_col);
 
     client.Insert("otel_logs", block);
     std::clog << "inserted logs rows=" << rows.size() << '\n';

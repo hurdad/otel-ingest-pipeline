@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -25,9 +26,20 @@ struct MetricRow {
 
 struct LogRow {
   uint64_t timestamp_ns;
+  std::string trace_id;
+  std::string span_id;
+  uint8_t trace_flags;
   std::string service_name;
   std::string severity_text;
+  uint8_t severity_number;
   std::string body;
+  std::string resource_schema_url;
+  std::map<std::string, std::string> resource_attributes;
+  std::string scope_schema_url;
+  std::string scope_name;
+  std::string scope_version;
+  std::map<std::string, std::string> scope_attributes;
+  std::map<std::string, std::string> log_attributes;
 };
 
 std::vector<TraceRow> DecodeTraces(const std::string& payload);
