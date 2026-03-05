@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(OTEL_PIPELINE_BUILD_TESTS "Build tests" OFF)
+set(BUILD_TESTING OFF CACHE BOOL "Disable third-party tests by default" FORCE)
 
 include(cmake/dependencies.cmake)
 
@@ -16,3 +17,9 @@ add_subdirectory(libs/clickhouse_writer)
 
 add_subdirectory(services/otlp_gateway)
 add_subdirectory(services/clickhouse_loader)
+
+if(OTEL_PIPELINE_BUILD_TESTS)
+  set(BUILD_TESTING ON CACHE BOOL "Enable first-party tests" FORCE)
+  enable_testing()
+  add_subdirectory(tests)
+endif()

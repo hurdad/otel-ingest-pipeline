@@ -30,6 +30,18 @@ Binaries:
 - `build/services/otlp_gateway/otel-otlp-gateway`
 - `build/services/clickhouse_loader/jetstream-clickhouse-loader`
 
+## Testing
+
+Configure with tests enabled, build, and run with CTest:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOTEL_PIPELINE_BUILD_TESTS=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+```
+
+This wires unit-test executables for first-party libraries under `libs/` (and optional `telemetry`) and excludes third-party test suites.
+
 ## Running locally
 
 1. Start NATS with JetStream and ClickHouse.
