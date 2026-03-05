@@ -14,7 +14,9 @@ struct Message {
 
 class JetStreamPublisher {
  public:
-  explicit JetStreamPublisher(std::string url);
+  // Connects and ensures the named stream exists with the given subjects.
+  JetStreamPublisher(std::string url, std::string stream_name,
+                     std::vector<std::string> subjects);
   ~JetStreamPublisher();
   bool Publish(const std::string& subject, const void* data, size_t size);
 

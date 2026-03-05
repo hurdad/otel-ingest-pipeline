@@ -8,6 +8,25 @@
 
 namespace jetstream_client {
 
+namespace {
+
+// Creates the stream if it doesn't already exist.
+void ensure_stream(natscpp::jetstream& js, const std::string& stream_name,
+                   const std::vector<std::string>& subjects) {
+  try {
+    js.get_stream_info(stream_name);
+  } catch (const natscpp::nats_error& e) {
+    if (e.status() == NATS_NOT_FOUND) {
+      js.create_stream({stream_name, subjects});
+      std::clog << "JetStream stream created name=" << stream_name << '\n';
+    } else {
+      throw;
+    }
+  }
+}
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // JetStreamPublisher
 // ---------------------------------------------------------------------------
@@ -16,13 +35,18 @@ struct JetStreamPublisher::Impl {
   natscpp::connection conn;
   natscpp::jetstream js;
 
-  explicit Impl(std::string_view url)
-      : conn(natscpp::connection::connect_to(url)), js(conn) {}
+  Impl(std::string_view url, const std::string& stream_name,
+       const std::vector<std::string>& subjects)
+      : conn(natscpp::connection::connect_to(url)), js(conn) {
+    ensure_stream(js, stream_name, subjects);
+  }
 };
 
-JetStreamPublisher::JetStreamPublisher(std::string url) : url_(std::move(url)) {
+JetStreamPublisher::JetStreamPublisher(std::string url, std::string stream_name,
+                                       std::vector<std::string> subjects)
+    : url_(std::move(url)) {
   try {
-    impl_ = std::make_unique<Impl>(url_);
+    impl_ = std::make_unique<Impl>(url_, stream_name, subjects);
   } catch (const natscpp::nats_error& e) {
     std::clog << "JetStream publisher connect failed url=" << url_ << ": " << e.what() << '\n';
   }
@@ -55,8 +79,10 @@ struct JetStreamConsumer::Impl {
   std::vector<natscpp::js_pull_consumer> consumers;
   std::vector<std::string> subjects;
 
-  Impl(std::string_view url, const std::vector<std::string>& subs)
+  Impl(std::string_view url, const std::string& stream_name,
+       const std::vector<std::string>& subs)
       : conn(natscpp::connection::connect_to(url)), js(conn) {
+    ensure_stream(js, stream_name, subs);
     for (const auto& subject : subs) {
       // Derive a durable consumer name from the subject (dots -> dashes).
       std::string durable = subject;
@@ -71,7 +97,7 @@ JetStreamConsumer::JetStreamConsumer(std::string url, std::string stream,
                                      std::vector<std::string> subjects)
     : url_(std::move(url)), stream_(std::move(stream)), subjects_(std::move(subjects)) {
   try {
-    impl_ = std::make_unique<Impl>(url_, subjects_);
+    impl_ = std::make_unique<Impl>(url_, stream_, subjects_);
   } catch (const natscpp::nats_error& e) {
     std::clog << "JetStream consumer connect failed url=" << url_ << ": " << e.what() << '\n';
   }

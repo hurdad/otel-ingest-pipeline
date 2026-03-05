@@ -12,7 +12,7 @@
 
 class OtlpGrpcServer final {
  public:
-  OtlpGrpcServer(std::string address, std::string nats_url);
+  OtlpGrpcServer(std::string address, std::string nats_url, std::string stream_name);
   void Run();
   void Shutdown();
 

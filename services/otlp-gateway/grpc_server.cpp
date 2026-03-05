@@ -58,9 +58,10 @@ grpc::Status OtlpGrpcServer::LogsServiceImpl::Export(
   return grpc::Status::OK;
 }
 
-OtlpGrpcServer::OtlpGrpcServer(std::string address, std::string nats_url)
+OtlpGrpcServer::OtlpGrpcServer(std::string address, std::string nats_url, std::string stream_name)
     : address_(std::move(address)),
-      publisher_(std::move(nats_url)),
+      publisher_(std::move(nats_url), std::move(stream_name),
+                 {kTraceSubject, kMetricSubject, kLogSubject}),
       trace_service_(publisher_),
       metrics_service_(publisher_),
       logs_service_(publisher_) {}

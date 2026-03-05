@@ -25,7 +25,8 @@ int main() {
   telemetry::InitTelemetry();
 
   OtlpGrpcServer server(GetEnvOrDefault("GATEWAY_LISTEN_ADDR", "0.0.0.0:4317"),
-                        GetEnvOrDefault("NATS_URL", "nats://localhost:4222"));
+                        GetEnvOrDefault("NATS_URL", "nats://localhost:4222"),
+                        GetEnvOrDefault("NATS_STREAM", "OTEL_TELEMETRY"));
 
   // Block signals before spawning the server thread so they are delivered only
   // to the main thread's sigwait call, regardless of which thread they arrive on.
