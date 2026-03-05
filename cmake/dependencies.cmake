@@ -45,5 +45,8 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/clickhouse-cpp/CMakeLists.txt")
 endif()
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/nats-cpp/CMakeLists.txt")
+  set(_otel_pipeline_build_testing "${BUILD_TESTING}")
+  set(BUILD_TESTING OFF)
   add_subdirectory("${CMAKE_SOURCE_DIR}/third_party/nats-cpp" third_party/nats-cpp EXCLUDE_FROM_ALL)
+  set(BUILD_TESTING "${_otel_pipeline_build_testing}")
 endif()
