@@ -1,7 +1,5 @@
 add_executable(jetstream-clickhouse-loader
-  main.cpp
-  jetstream_consumer.cpp
-  clickhouse_batcher.cpp)
+  main.cpp)
 
 target_include_directories(jetstream-clickhouse-loader PRIVATE .)
 target_link_libraries(jetstream-clickhouse-loader

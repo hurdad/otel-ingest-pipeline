@@ -17,10 +17,12 @@ grpc::Status OtlpGrpcServer::TraceServiceImpl::Export(
     grpc::ServerContext*,
     const opentelemetry::proto::collector::trace::v1::ExportTraceServiceRequest* request,
     opentelemetry::proto::collector::trace::v1::ExportTraceServiceResponse*) {
-  auto span = telemetry::StartSpan("grpc_requests");
+  auto span = telemetry::StartSpan("grpc_export_traces");
   std::string payload;
   request->SerializeToString(&payload);
-  publisher_.Publish(kTraceSubject, payload.data(), payload.size());
+  if (!publisher_.Publish(kTraceSubject, payload.data(), payload.size())) {
+    return grpc::Status(grpc::StatusCode::UNAVAILABLE, "Failed to publish traces to NATS");
+  }
   return grpc::Status::OK;
 }
 
@@ -31,10 +33,12 @@ grpc::Status OtlpGrpcServer::MetricsServiceImpl::Export(
     grpc::ServerContext*,
     const opentelemetry::proto::collector::metrics::v1::ExportMetricsServiceRequest* request,
     opentelemetry::proto::collector::metrics::v1::ExportMetricsServiceResponse*) {
-  auto span = telemetry::StartSpan("grpc_requests");
+  auto span = telemetry::StartSpan("grpc_export_metrics");
   std::string payload;
   request->SerializeToString(&payload);
-  publisher_.Publish(kMetricSubject, payload.data(), payload.size());
+  if (!publisher_.Publish(kMetricSubject, payload.data(), payload.size())) {
+    return grpc::Status(grpc::StatusCode::UNAVAILABLE, "Failed to publish metrics to NATS");
+  }
   return grpc::Status::OK;
 }
 
@@ -45,10 +49,12 @@ grpc::Status OtlpGrpcServer::LogsServiceImpl::Export(
     grpc::ServerContext*,
     const opentelemetry::proto::collector::logs::v1::ExportLogsServiceRequest* request,
     opentelemetry::proto::collector::logs::v1::ExportLogsServiceResponse*) {
-  auto span = telemetry::StartSpan("grpc_requests");
+  auto span = telemetry::StartSpan("grpc_export_logs");
   std::string payload;
   request->SerializeToString(&payload);
-  publisher_.Publish(kLogSubject, payload.data(), payload.size());
+  if (!publisher_.Publish(kLogSubject, payload.data(), payload.size())) {
+    return grpc::Status(grpc::StatusCode::UNAVAILABLE, "Failed to publish logs to NATS");
+  }
   return grpc::Status::OK;
 }
 

@@ -21,9 +21,6 @@ class ClickHouseWriter {
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
-  std::string host_;
-  uint16_t port_;
-  std::string database_;
 };
 
 template <typename T>

@@ -109,6 +109,11 @@ std::map<std::string, std::string> AttributesToMap(
   return out;
 }
 
+std::string ServiceNameFromMap(const std::map<std::string, std::string>& attrs) {
+  const auto it = attrs.find("service.name");
+  return it != attrs.end() ? it->second : "unknown";
+}
+
 }  // namespace
 
 std::vector<TraceRow> DecodeTraces(const std::string& payload) {
@@ -119,10 +124,7 @@ std::vector<TraceRow> DecodeTraces(const std::string& payload) {
   std::vector<TraceRow> rows;
   for (const auto& rs : req.resource_spans()) {
     auto resource_attributes = AttributesToMap(rs.resource().attributes());
-    std::string service_name = "unknown";
-    for (const auto& attr : rs.resource().attributes()) {
-      if (attr.key() == "service.name") service_name = attr.value().string_value();
-    }
+    const std::string service_name = ServiceNameFromMap(resource_attributes);
     for (const auto& ss : rs.scope_spans()) {
       for (const auto& span : ss.spans()) {
         std::vector<uint64_t> event_timestamps_ns;
@@ -152,8 +154,12 @@ std::vector<TraceRow> DecodeTraces(const std::string& payload) {
           link_attributes.push_back(AttributesToMap(link.attributes()));
         }
 
+        const auto start_ns = static_cast<uint64_t>(span.start_time_unix_nano());
+        const auto end_ns = static_cast<uint64_t>(span.end_time_unix_nano());
+        const uint64_t duration_ns = end_ns > start_ns ? end_ns - start_ns : 0;
+
         rows.push_back({
-            static_cast<uint64_t>(span.start_time_unix_nano()),
+            start_ns,
             BytesToHex(span.trace_id()),
             BytesToHex(span.span_id()),
             BytesToHex(span.parent_span_id()),
@@ -165,7 +171,7 @@ std::vector<TraceRow> DecodeTraces(const std::string& payload) {
             ss.scope().name(),
             ss.scope().version(),
             AttributesToMap(span.attributes()),
-            static_cast<uint64_t>(span.end_time_unix_nano() - span.start_time_unix_nano()),
+            duration_ns,
             StatusCodeToString(span.status().code()),
             span.status().message(),
             std::move(event_timestamps_ns),
@@ -195,8 +201,8 @@ std::vector<MetricRow> DecodeMetrics(const std::string& payload) {
     }
     for (const auto& sm : rm.scope_metrics()) {
       for (const auto& metric : sm.metrics()) {
-        const auto add = [&](uint64_t ts, double value, MetricType metric_type) {
-          rows.push_back({ts, service_name, metric.name(), value, metric_type});
+        const auto add = [&](uint64_t ts, double value, uint64_t count, MetricType metric_type) {
+          rows.push_back({ts, service_name, metric.name(), value, count, metric_type});
         };
         const auto ndp_value = [](const NDP& dp) -> double {
           return dp.value_case() == NDP::kAsInt ? static_cast<double>(dp.as_int())
@@ -204,23 +210,23 @@ std::vector<MetricRow> DecodeMetrics(const std::string& payload) {
         };
         if (metric.has_gauge()) {
           for (const auto& dp : metric.gauge().data_points()) {
-            add(dp.time_unix_nano(), ndp_value(dp), MetricType::Gauge);
+            add(dp.time_unix_nano(), ndp_value(dp), 0, MetricType::Gauge);
           }
         } else if (metric.has_sum()) {
           for (const auto& dp : metric.sum().data_points()) {
-            add(dp.time_unix_nano(), ndp_value(dp), MetricType::Sum);
+            add(dp.time_unix_nano(), ndp_value(dp), 0, MetricType::Sum);
           }
         } else if (metric.has_histogram()) {
           for (const auto& dp : metric.histogram().data_points()) {
-            add(dp.time_unix_nano(), dp.sum(), MetricType::Histogram);
+            add(dp.time_unix_nano(), dp.sum(), dp.count(), MetricType::Histogram);
           }
         } else if (metric.has_exponential_histogram()) {
           for (const auto& dp : metric.exponential_histogram().data_points()) {
-            add(dp.time_unix_nano(), dp.sum(), MetricType::ExponentialHistogram);
+            add(dp.time_unix_nano(), dp.sum(), dp.count(), MetricType::ExponentialHistogram);
           }
         } else if (metric.has_summary()) {
           for (const auto& dp : metric.summary().data_points()) {
-            add(dp.time_unix_nano(), dp.sum(), MetricType::Summary);
+            add(dp.time_unix_nano(), dp.sum(), dp.count(), MetricType::Summary);
           }
         }
       }
@@ -236,11 +242,8 @@ std::vector<LogRow> DecodeLogs(const std::string& payload) {
   }
   std::vector<LogRow> rows;
   for (const auto& rl : req.resource_logs()) {
-    std::string service_name = "unknown";
     auto resource_attributes = AttributesToMap(rl.resource().attributes());
-    for (const auto& attr : rl.resource().attributes()) {
-      if (attr.key() == "service.name") service_name = attr.value().string_value();
-    }
+    const std::string service_name = ServiceNameFromMap(resource_attributes);
     for (const auto& sl : rl.scope_logs()) {
       auto scope_attributes = AttributesToMap(sl.scope().attributes());
       for (const auto& rec : sl.log_records()) {

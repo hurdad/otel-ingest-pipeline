@@ -1,4 +1,4 @@
-#include "clickhouse_batcher.cpp"
+#include "clickhouse_batcher.h"
 #include "jetstream_client/jetstream_client.h"
 #include "telemetry/tracer.h"
 
@@ -41,29 +41,6 @@ uint16_t ParsePortOrDefault(const char* key, uint16_t fallback) {
   }
 }
 
-int BlockTerminationSignals() {
-  sigset_t signal_set;
-  sigemptyset(&signal_set);
-  sigaddset(&signal_set, SIGINT);
-  sigaddset(&signal_set, SIGTERM);
-  return pthread_sigmask(SIG_BLOCK, &signal_set, nullptr);
-}
-
-int WaitForTerminationSignal() {
-  sigset_t signal_set;
-  sigemptyset(&signal_set);
-  sigaddset(&signal_set, SIGINT);
-  sigaddset(&signal_set, SIGTERM);
-
-  int received_signal = 0;
-  const int wait_result = sigwait(&signal_set, &received_signal);
-  if (wait_result != 0) {
-    std::clog << "sigwait failed, forcing shutdown\n";
-    return SIGTERM;
-  }
-  return received_signal;
-}
-
 }  // namespace
 
 int main() {
@@ -79,7 +56,13 @@ int main() {
             << "  NATS: " << nats_url << " stream=" << nats_stream << '\n'
             << "  ClickHouse: " << ch_host << ':' << ch_port << '/' << ch_database << '\n';
 
-  if (BlockTerminationSignals() != 0) {
+  // Block signals before spawning the consumer thread so they are delivered
+  // only to the main thread's sigwait call.
+  sigset_t signal_set;
+  sigemptyset(&signal_set);
+  sigaddset(&signal_set, SIGINT);
+  sigaddset(&signal_set, SIGTERM);
+  if (pthread_sigmask(SIG_BLOCK, &signal_set, nullptr) != 0) {
     std::clog << "Failed to block termination signals, exiting without graceful shutdown\n";
     return 1;
   }
@@ -106,8 +89,12 @@ int main() {
     batcher.FlushAll();
   });
 
-  const int signal = WaitForTerminationSignal();
-  std::clog << "Received signal " << signal << ", shutting down loader\n";
+  int received_signal = 0;
+  if (sigwait(&signal_set, &received_signal) != 0) {
+    std::clog << "sigwait failed, forcing shutdown\n";
+    received_signal = SIGTERM;
+  }
+  std::clog << "Received signal " << received_signal << ", shutting down loader\n";
 
   running.store(false, std::memory_order_relaxed);
   if (consumer_thread.joinable()) {

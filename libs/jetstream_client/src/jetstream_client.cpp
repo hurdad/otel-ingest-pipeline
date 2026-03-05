@@ -21,12 +21,20 @@ struct JetStreamPublisher::Impl {
 };
 
 JetStreamPublisher::JetStreamPublisher(std::string url) : url_(std::move(url)) {
-  impl_ = std::make_unique<Impl>(url_);
+  try {
+    impl_ = std::make_unique<Impl>(url_);
+  } catch (const natscpp::nats_error& e) {
+    std::clog << "JetStream publisher connect failed url=" << url_ << ": " << e.what() << '\n';
+  }
 }
 
 JetStreamPublisher::~JetStreamPublisher() = default;
 
 bool JetStreamPublisher::Publish(const std::string& subject, const void* data, size_t size) {
+  if (!impl_) {
+    std::clog << "JetStream publisher not connected, dropping subject=" << subject << '\n';
+    return false;
+  }
   auto span = telemetry::StartSpan("jetstream_publish");
   try {
     (void)impl_->js.publish(subject, std::string_view(static_cast<const char*>(data), size));
@@ -62,12 +70,20 @@ struct JetStreamConsumer::Impl {
 JetStreamConsumer::JetStreamConsumer(std::string url, std::string stream,
                                      std::vector<std::string> subjects)
     : url_(std::move(url)), stream_(std::move(stream)), subjects_(std::move(subjects)) {
-  impl_ = std::make_unique<Impl>(url_, subjects_);
+  try {
+    impl_ = std::make_unique<Impl>(url_, subjects_);
+  } catch (const natscpp::nats_error& e) {
+    std::clog << "JetStream consumer connect failed url=" << url_ << ": " << e.what() << '\n';
+  }
 }
 
 JetStreamConsumer::~JetStreamConsumer() = default;
 
 void JetStreamConsumer::Poll(const Handler& handler) {
+  if (!impl_) {
+    std::clog << "JetStream consumer not connected, skipping poll\n";
+    return;
+  }
   auto span = telemetry::StartSpan("jetstream_consume");
   for (size_t i = 0; i < impl_->consumers.size(); ++i) {
     // Drain all available messages for this subject.

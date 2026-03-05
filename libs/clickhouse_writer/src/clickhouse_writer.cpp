@@ -16,35 +16,32 @@ namespace clickhouse_writer {
 
 struct ClickHouseWriter::Impl {
   clickhouse::ClientOptions opts;
+  std::unique_ptr<clickhouse::Client> client;
 
-  explicit Impl(const std::string& host, uint16_t port, const std::string& database) {
+  Impl(const std::string& host, uint16_t port, const std::string& database) {
     opts.SetHost(host).SetPort(port).SetDefaultDatabase(database);
   }
 
-  clickhouse::Client connect() { return clickhouse::Client(opts); }
+  clickhouse::Client& GetClient() {
+    if (!client) {
+      client = std::make_unique<clickhouse::Client>(opts);
+    }
+    return *client;
+  }
+
+  void ResetClient() { client.reset(); }
 };
 
 ClickHouseWriter::ClickHouseWriter(std::string host, uint16_t port, std::string database)
-    : host_(std::move(host)), port_(port), database_(std::move(database)) {
-  try {
-    impl_ = std::make_unique<Impl>(host_, port_, database_);
-  } catch (const std::exception& e) {
-    std::clog << "ClickHouse writer init failed host=" << host_ << " port=" << port_
-              << " database=" << database_ << " error=" << e.what() << '\n';
-  }
-}
+    : impl_(std::make_unique<Impl>(host, port, database)) {}
 
 ClickHouseWriter::~ClickHouseWriter() = default;
 
 void ClickHouseWriter::InsertTraces(const std::vector<otlp_decoder::TraceRow>& rows) {
-  if (!impl_) {
-    telemetry::RecordClickHouseInsertError();
-    std::clog << "ClickHouse InsertTraces skipped: writer not initialized\n";
-    return;
-  }
+  if (rows.empty()) return;
   auto span = telemetry::StartSpan("clickhouse_insert");
   try {
-    auto client = impl_->connect();
+    auto& client = impl_->GetClient();
 
     auto ts_col = std::make_shared<clickhouse::ColumnDateTime64>(9);
     auto trace_id_col = std::make_shared<clickhouse::ColumnString>();
@@ -155,20 +152,17 @@ void ClickHouseWriter::InsertTraces(const std::vector<otlp_decoder::TraceRow>& r
     telemetry::RecordClickHouseRowsInserted(static_cast<uint64_t>(rows.size()));
     std::clog << "inserted traces rows=" << rows.size() << '\n';
   } catch (const std::exception& e) {
+    impl_->ResetClient();
     telemetry::RecordClickHouseInsertError();
     std::clog << "ClickHouse InsertTraces error: " << e.what() << '\n';
   }
 }
 
 void ClickHouseWriter::InsertMetrics(const std::vector<otlp_decoder::MetricRow>& rows) {
-  if (!impl_) {
-    telemetry::RecordClickHouseInsertError();
-    std::clog << "ClickHouse InsertMetrics skipped: writer not initialized\n";
-    return;
-  }
+  if (rows.empty()) return;
   auto span = telemetry::StartSpan("clickhouse_insert");
   try {
-    auto client = impl_->connect();
+    auto& client = impl_->GetClient();
 
     struct MetricInsertBuffer {
       std::shared_ptr<clickhouse::ColumnDateTime64> start_time_col =
@@ -189,7 +183,7 @@ void ClickHouseWriter::InsertMetrics(const std::vector<otlp_decoder::MetricRow>&
         service_col->Append(std::string_view(row.service_name));
         metric_col->Append(row.metric_name);
         value_col->Append(row.value);
-        count_col->Append(0);
+        count_col->Append(row.count);
         flags_col->Append(0);
       }
 
@@ -256,20 +250,17 @@ void ClickHouseWriter::InsertMetrics(const std::vector<otlp_decoder::MetricRow>&
     telemetry::RecordClickHouseRowsInserted(static_cast<uint64_t>(rows.size()));
     std::clog << "inserted metrics rows=" << rows.size() << '\n';
   } catch (const std::exception& e) {
+    impl_->ResetClient();
     telemetry::RecordClickHouseInsertError();
     std::clog << "ClickHouse InsertMetrics error: " << e.what() << '\n';
   }
 }
 
 void ClickHouseWriter::InsertLogs(const std::vector<otlp_decoder::LogRow>& rows) {
-  if (!impl_) {
-    telemetry::RecordClickHouseInsertError();
-    std::clog << "ClickHouse InsertLogs skipped: writer not initialized\n";
-    return;
-  }
+  if (rows.empty()) return;
   auto span = telemetry::StartSpan("clickhouse_insert");
   try {
-    auto client = impl_->connect();
+    auto& client = impl_->GetClient();
 
     auto ts_col = std::make_shared<clickhouse::ColumnDateTime64>(9);
     auto trace_id_col = std::make_shared<clickhouse::ColumnString>();
@@ -342,6 +333,7 @@ void ClickHouseWriter::InsertLogs(const std::vector<otlp_decoder::LogRow>& rows)
     telemetry::RecordClickHouseRowsInserted(static_cast<uint64_t>(rows.size()));
     std::clog << "inserted logs rows=" << rows.size() << '\n';
   } catch (const std::exception& e) {
+    impl_->ResetClient();
     telemetry::RecordClickHouseInsertError();
     std::clog << "ClickHouse InsertLogs error: " << e.what() << '\n';
   }

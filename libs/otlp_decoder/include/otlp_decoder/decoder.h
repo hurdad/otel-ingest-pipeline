@@ -45,6 +45,7 @@ struct MetricRow {
   std::string service_name;
   std::string metric_name;
   double value;
+  uint64_t count;
   MetricType metric_type;
 };
 

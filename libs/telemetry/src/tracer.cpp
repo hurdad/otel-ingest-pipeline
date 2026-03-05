@@ -143,7 +143,9 @@ class TelemetryRuntime {
 
   void LogSpan(const std::string& name, uint64_t duration_ms) {
     if (logger_) {
-      logger_->Debug("span_completed");
+      const std::string msg =
+          "span_completed name=" + name + " duration_ms=" + std::to_string(duration_ms);
+      logger_->Debug(msg);
     }
   }
 

@@ -176,7 +176,7 @@ TEST(OtlpDecoderTest, DecodeTracesComputesDurationFromStartAndEndTime) {
   EXPECT_EQ(rows[0].timestamp_ns, 100u);
   EXPECT_EQ(rows[0].duration_ns, 80u);
   EXPECT_EQ(rows[0].service_name, "checkout");
-  EXPECT_EQ(rows[0].operation_name, "operation-1");
+  EXPECT_EQ(rows[0].span_name, "operation-1");
 }
 
 TEST(OtlpDecoderTest, DecodeMetricsMapsMetricNamesAndValues) {
@@ -241,7 +241,7 @@ TEST(OtlpDecoderTest, DecodeLogsUsesEmptyBodyForNonStringValueTypes) {
   ASSERT_EQ(rows.size(), 1);
   EXPECT_EQ(rows[0].service_name, "unknown");
   EXPECT_EQ(rows[0].severity_text, "DEBUG");
-  EXPECT_TRUE(rows[0].body.empty());
+  EXPECT_EQ(rows[0].body, "true");
 }
 
 }  // namespace
