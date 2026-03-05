@@ -18,6 +18,29 @@ The repository contains two C++20 services:
 - `otel-otlp-gateway`: OTLP gRPC ingest service implementing traces/metrics/logs collector APIs.
 - `jetstream-clickhouse-loader`: JetStream consumer that decodes OTLP protobuf payloads and batches inserts into ClickHouse.
 
+## Quick start (Docker Compose)
+
+If you want to run the full pipeline locally with minimal setup, use Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Then send OTLP data to the collector:
+- gRPC: `localhost:4317`
+- HTTP: `localhost:4318`
+
+The compose stack starts Collector → Gateway → NATS JetStream → Loader → ClickHouse, and initializes both the JetStream stream and ClickHouse schema automatically.
+
+## Repository layout
+
+- `services/otlp_gateway`: OTLP ingest gateway implementation.
+- `services/clickhouse_loader`: JetStream-to-ClickHouse loader implementation.
+- `libs/`: shared first-party libraries (serialization, telemetry, common utilities).
+- `configs/`: example runtime configuration for gateway, loader, and collector.
+- `scripts/`: JetStream stream bootstrap and ClickHouse schema SQL.
+- `charts/otel-telemetry-pipeline`: Helm chart for Kubernetes deployment.
+
 ## Build instructions
 
 ```bash
