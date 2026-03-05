@@ -14,7 +14,10 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/opentelemetry-cpp/CMakeLists.txt")
                    third_party/opentelemetry-cpp EXCLUDE_FROM_ALL)
 endif()
 
-set(OTEL_PROTO_ROOT "${CMAKE_SOURCE_DIR}/third_party/opentelemetry-proto")
+set(OTEL_PROTO_ROOT "${CMAKE_SOURCE_DIR}/third_party/opentelemetry-cpp/third_party/opentelemetry-proto")
+if(NOT EXISTS "${OTEL_PROTO_ROOT}/opentelemetry/proto")
+  message(FATAL_ERROR "OpenTelemetry proto sources were not found at ${OTEL_PROTO_ROOT}")
+endif()
 file(GLOB_RECURSE OTEL_PROTO_FILES CONFIGURE_DEPENDS
   "${OTEL_PROTO_ROOT}/opentelemetry/proto/*.proto")
 
