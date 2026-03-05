@@ -10,6 +10,38 @@ namespace otlp_decoder {
 
 namespace {
 
+std::string SpanKindToString(opentelemetry::proto::trace::v1::Span::SpanKind span_kind) {
+  using SpanKind = opentelemetry::proto::trace::v1::Span::SpanKind;
+  switch (span_kind) {
+    case SpanKind::Span_SpanKind_SPAN_KIND_INTERNAL:
+      return "SPAN_KIND_INTERNAL";
+    case SpanKind::Span_SpanKind_SPAN_KIND_SERVER:
+      return "SPAN_KIND_SERVER";
+    case SpanKind::Span_SpanKind_SPAN_KIND_CLIENT:
+      return "SPAN_KIND_CLIENT";
+    case SpanKind::Span_SpanKind_SPAN_KIND_PRODUCER:
+      return "SPAN_KIND_PRODUCER";
+    case SpanKind::Span_SpanKind_SPAN_KIND_CONSUMER:
+      return "SPAN_KIND_CONSUMER";
+    case SpanKind::Span_SpanKind_SPAN_KIND_UNSPECIFIED:
+      return "SPAN_KIND_UNSPECIFIED";
+  }
+  return "SPAN_KIND_UNSPECIFIED";
+}
+
+std::string StatusCodeToString(opentelemetry::proto::trace::v1::Status::StatusCode status_code) {
+  using StatusCode = opentelemetry::proto::trace::v1::Status::StatusCode;
+  switch (status_code) {
+    case StatusCode::Status_StatusCode_STATUS_CODE_OK:
+      return "STATUS_CODE_OK";
+    case StatusCode::Status_StatusCode_STATUS_CODE_ERROR:
+      return "STATUS_CODE_ERROR";
+    case StatusCode::Status_StatusCode_STATUS_CODE_UNSET:
+      return "STATUS_CODE_UNSET";
+  }
+  return "STATUS_CODE_UNSET";
+}
+
 std::string BytesToHex(const std::string& bytes) {
   static constexpr char kHex[] = "0123456789abcdef";
   std::string out;
@@ -86,20 +118,63 @@ std::vector<TraceRow> DecodeTraces(const std::string& payload) {
   }
   std::vector<TraceRow> rows;
   for (const auto& rs : req.resource_spans()) {
+    auto resource_attributes = AttributesToMap(rs.resource().attributes());
     std::string service_name = "unknown";
     for (const auto& attr : rs.resource().attributes()) {
       if (attr.key() == "service.name") service_name = attr.value().string_value();
     }
     for (const auto& ss : rs.scope_spans()) {
       for (const auto& span : ss.spans()) {
+        std::vector<uint64_t> event_timestamps_ns;
+        std::vector<std::string> event_names;
+        std::vector<std::map<std::string, std::string>> event_attributes;
+        event_timestamps_ns.reserve(span.events_size());
+        event_names.reserve(span.events_size());
+        event_attributes.reserve(span.events_size());
+        for (const auto& event : span.events()) {
+          event_timestamps_ns.push_back(static_cast<uint64_t>(event.time_unix_nano()));
+          event_names.push_back(event.name());
+          event_attributes.push_back(AttributesToMap(event.attributes()));
+        }
+
+        std::vector<std::string> link_trace_ids;
+        std::vector<std::string> link_span_ids;
+        std::vector<std::string> link_trace_states;
+        std::vector<std::map<std::string, std::string>> link_attributes;
+        link_trace_ids.reserve(span.links_size());
+        link_span_ids.reserve(span.links_size());
+        link_trace_states.reserve(span.links_size());
+        link_attributes.reserve(span.links_size());
+        for (const auto& link : span.links()) {
+          link_trace_ids.push_back(BytesToHex(link.trace_id()));
+          link_span_ids.push_back(BytesToHex(link.span_id()));
+          link_trace_states.push_back(link.trace_state());
+          link_attributes.push_back(AttributesToMap(link.attributes()));
+        }
+
         rows.push_back({
             static_cast<uint64_t>(span.start_time_unix_nano()),
-            span.trace_id(),
-            span.span_id(),
-            span.parent_span_id(),
-            service_name,
+            BytesToHex(span.trace_id()),
+            BytesToHex(span.span_id()),
+            BytesToHex(span.parent_span_id()),
+            span.trace_state(),
             span.name(),
-            static_cast<uint64_t>(span.end_time_unix_nano() - span.start_time_unix_nano())});
+            SpanKindToString(span.kind()),
+            service_name,
+            resource_attributes,
+            ss.scope().name(),
+            ss.scope().version(),
+            AttributesToMap(span.attributes()),
+            static_cast<uint64_t>(span.end_time_unix_nano() - span.start_time_unix_nano()),
+            StatusCodeToString(span.status().code()),
+            span.status().message(),
+            std::move(event_timestamps_ns),
+            std::move(event_names),
+            std::move(event_attributes),
+            std::move(link_trace_ids),
+            std::move(link_span_ids),
+            std::move(link_trace_states),
+            std::move(link_attributes)});
       }
     }
   }
