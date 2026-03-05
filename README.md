@@ -108,7 +108,11 @@ clickhouse-client --multiquery < scripts/clickhouse_schema.sql
 
 Tables:
 - `otel_traces`
-- `otel_metrics`
+- `otel_metrics_gauge`
+- `otel_metrics_sum`
+- `otel_metrics_histogram`
+- `otel_metrics_exponentialhistogram`
+- `otel_metrics_summary`
 - `otel_logs`
 
 ## Example pipeline

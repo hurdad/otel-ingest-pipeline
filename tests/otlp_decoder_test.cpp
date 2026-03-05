@@ -188,11 +188,13 @@ TEST(OtlpDecoderTest, DecodeMetricsMapsMetricNamesAndValues) {
   EXPECT_EQ(rows[0].metric_name, "cpu.usage");
   EXPECT_EQ(rows[0].timestamp_ns, 1000u);
   EXPECT_DOUBLE_EQ(rows[0].value, 1.5);
+  EXPECT_EQ(rows[0].metric_type, otlp_decoder::MetricType::Gauge);
 
   EXPECT_EQ(rows[1].service_name, "billing");
   EXPECT_EQ(rows[1].metric_name, "memory.usage");
   EXPECT_EQ(rows[1].timestamp_ns, 1000u);
   EXPECT_DOUBLE_EQ(rows[1].value, 1.5);
+  EXPECT_EQ(rows[1].metric_type, otlp_decoder::MetricType::Gauge);
 }
 
 TEST(OtlpDecoderTest, DecodeLogsMapsTimestampSeverityAndBodyStringValue) {
@@ -215,18 +217,22 @@ TEST(OtlpDecoderTest, DecodeMetricsSupportsGaugeSumHistogramAndSummaryDataPoints
   EXPECT_EQ(rows[0].metric_name, "requests.inflight");
   EXPECT_EQ(rows[0].timestamp_ns, 10u);
   EXPECT_DOUBLE_EQ(rows[0].value, 7.0);
+  EXPECT_EQ(rows[0].metric_type, otlp_decoder::MetricType::Gauge);
 
   EXPECT_EQ(rows[1].metric_name, "requests.total");
   EXPECT_EQ(rows[1].timestamp_ns, 11u);
   EXPECT_DOUBLE_EQ(rows[1].value, 11.5);
+  EXPECT_EQ(rows[1].metric_type, otlp_decoder::MetricType::Sum);
 
   EXPECT_EQ(rows[2].metric_name, "latency.histogram");
   EXPECT_EQ(rows[2].timestamp_ns, 12u);
   EXPECT_DOUBLE_EQ(rows[2].value, 15.25);
+  EXPECT_EQ(rows[2].metric_type, otlp_decoder::MetricType::Histogram);
 
   EXPECT_EQ(rows[3].metric_name, "latency.summary");
   EXPECT_EQ(rows[3].timestamp_ns, 13u);
   EXPECT_DOUBLE_EQ(rows[3].value, 2.5);
+  EXPECT_EQ(rows[3].metric_type, otlp_decoder::MetricType::Summary);
 }
 
 TEST(OtlpDecoderTest, DecodeLogsUsesEmptyBodyForNonStringValueTypes) {
