@@ -71,6 +71,59 @@ std::string SerializeMetricsRequest(const std::string &service_name,
   return payload;
 }
 
+
+
+std::string SerializeMetricsRequestWithMultipleDataPointTypes() {
+  opentelemetry::proto::collector::metrics::v1::ExportMetricsServiceRequest req;
+  auto *resource_metrics = req.add_resource_metrics();
+  auto *attribute = resource_metrics->mutable_resource()->add_attributes();
+  attribute->set_key("service.name");
+  attribute->mutable_value()->set_string_value("analytics");
+
+  auto *scope_metrics = resource_metrics->add_scope_metrics();
+
+  auto *gauge_metric = scope_metrics->add_metrics();
+  gauge_metric->set_name("requests.inflight");
+  auto *gauge_dp = gauge_metric->mutable_gauge()->add_data_points();
+  gauge_dp->set_time_unix_nano(10);
+  gauge_dp->set_as_int(7);
+
+  auto *sum_metric = scope_metrics->add_metrics();
+  sum_metric->set_name("requests.total");
+  auto *sum_dp = sum_metric->mutable_sum()->add_data_points();
+  sum_dp->set_time_unix_nano(11);
+  sum_dp->set_as_double(11.5);
+
+  auto *histogram_metric = scope_metrics->add_metrics();
+  histogram_metric->set_name("latency.histogram");
+  auto *histogram_dp = histogram_metric->mutable_histogram()->add_data_points();
+  histogram_dp->set_time_unix_nano(12);
+  histogram_dp->set_sum(15.25);
+
+  auto *summary_metric = scope_metrics->add_metrics();
+  summary_metric->set_name("latency.summary");
+  auto *summary_dp = summary_metric->mutable_summary()->add_data_points();
+  summary_dp->set_time_unix_nano(13);
+  summary_dp->set_sum(2.5);
+
+  std::string payload;
+  EXPECT_TRUE(req.SerializeToString(&payload));
+  return payload;
+}
+
+std::string SerializeLogsRequestWithNonStringBody() {
+  opentelemetry::proto::collector::logs::v1::ExportLogsServiceRequest req;
+  auto *resource_logs = req.add_resource_logs();
+  auto *scope_logs = resource_logs->add_scope_logs();
+  auto *record = scope_logs->add_log_records();
+  record->set_time_unix_nano(777);
+  record->set_severity_text("DEBUG");
+  record->mutable_body()->set_bool_value(true);
+
+  std::string payload;
+  EXPECT_TRUE(req.SerializeToString(&payload));
+  return payload;
+}
 std::string SerializeLogsRequest(const std::string &service_name,
                                  uint64_t timestamp_ns,
                                  const std::string &severity_text,
@@ -151,6 +204,38 @@ TEST(OtlpDecoderTest, DecodeLogsMapsTimestampSeverityAndBodyStringValue) {
   EXPECT_EQ(rows[0].service_name, "frontend");
   EXPECT_EQ(rows[0].severity_text, "WARN");
   EXPECT_EQ(rows[0].body, "cache miss");
+}
+
+
+TEST(OtlpDecoderTest, DecodeMetricsSupportsGaugeSumHistogramAndSummaryDataPoints) {
+  auto rows = otlp_decoder::DecodeMetrics(SerializeMetricsRequestWithMultipleDataPointTypes());
+
+  ASSERT_EQ(rows.size(), 4);
+  EXPECT_EQ(rows[0].service_name, "analytics");
+  EXPECT_EQ(rows[0].metric_name, "requests.inflight");
+  EXPECT_EQ(rows[0].timestamp_ns, 10u);
+  EXPECT_DOUBLE_EQ(rows[0].value, 7.0);
+
+  EXPECT_EQ(rows[1].metric_name, "requests.total");
+  EXPECT_EQ(rows[1].timestamp_ns, 11u);
+  EXPECT_DOUBLE_EQ(rows[1].value, 11.5);
+
+  EXPECT_EQ(rows[2].metric_name, "latency.histogram");
+  EXPECT_EQ(rows[2].timestamp_ns, 12u);
+  EXPECT_DOUBLE_EQ(rows[2].value, 15.25);
+
+  EXPECT_EQ(rows[3].metric_name, "latency.summary");
+  EXPECT_EQ(rows[3].timestamp_ns, 13u);
+  EXPECT_DOUBLE_EQ(rows[3].value, 2.5);
+}
+
+TEST(OtlpDecoderTest, DecodeLogsUsesEmptyBodyForNonStringValueTypes) {
+  auto rows = otlp_decoder::DecodeLogs(SerializeLogsRequestWithNonStringBody());
+
+  ASSERT_EQ(rows.size(), 1);
+  EXPECT_EQ(rows[0].service_name, "unknown");
+  EXPECT_EQ(rows[0].severity_text, "DEBUG");
+  EXPECT_TRUE(rows[0].body.empty());
 }
 
 }  // namespace
