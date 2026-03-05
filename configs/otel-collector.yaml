@@ -3,8 +3,25 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-collector-self-telemetry
+          scrape_interval: 10s
+          static_configs:
+            - targets: ["0.0.0.0:8888"]
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu: {}
+      memory: {}
+      disk: {}
+      filesystem: {}
+      load: {}
+      network: {}
+      paging: {}
+      process: {}
+      processes: {}
 
 processors:
   batch: {}
@@ -18,13 +35,16 @@ exporters:
     verbosity: basic
 
 service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlp, debug]
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, prometheus, hostmetrics]
       processors: [batch]
       exporters: [otlp, debug]
     logs:
