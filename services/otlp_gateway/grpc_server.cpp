@@ -68,3 +68,9 @@ void OtlpGrpcServer::Run() {
   server_ = builder.BuildAndStart();
   server_->Wait();
 }
+
+void OtlpGrpcServer::Shutdown() {
+  if (server_) {
+    server_->Shutdown();
+  }
+}

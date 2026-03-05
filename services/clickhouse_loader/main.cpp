@@ -2,10 +2,13 @@
 #include "jetstream_client/jetstream_client.h"
 #include "telemetry/tracer.h"
 
+#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <pthread.h>
 #include <string>
 #include <thread>
 
@@ -38,6 +41,29 @@ uint16_t ParsePortOrDefault(const char* key, uint16_t fallback) {
   }
 }
 
+int BlockTerminationSignals() {
+  sigset_t signal_set;
+  sigemptyset(&signal_set);
+  sigaddset(&signal_set, SIGINT);
+  sigaddset(&signal_set, SIGTERM);
+  return pthread_sigmask(SIG_BLOCK, &signal_set, nullptr);
+}
+
+int WaitForTerminationSignal() {
+  sigset_t signal_set;
+  sigemptyset(&signal_set);
+  sigaddset(&signal_set, SIGINT);
+  sigaddset(&signal_set, SIGTERM);
+
+  int received_signal = 0;
+  const int wait_result = sigwait(&signal_set, &received_signal);
+  if (wait_result != 0) {
+    std::clog << "sigwait failed, forcing shutdown\n";
+    return SIGTERM;
+  }
+  return received_signal;
+}
+
 }  // namespace
 
 int main() {
@@ -53,23 +79,39 @@ int main() {
             << "  NATS: " << nats_url << " stream=" << nats_stream << '\n'
             << "  ClickHouse: " << ch_host << ':' << ch_port << '/' << ch_database << '\n';
 
-  ClickHouseBatcher batcher(ch_host, ch_port, ch_database);
+  if (BlockTerminationSignals() != 0) {
+    std::clog << "Failed to block termination signals, exiting without graceful shutdown\n";
+    return 1;
+  }
 
+  ClickHouseBatcher batcher(ch_host, ch_port, ch_database);
   jetstream_client::JetStreamConsumer consumer(
       nats_url, nats_stream, {"otel.traces", "otel.metrics", "otel.logs"});
 
-  while (true) {
-    consumer.Poll([&batcher](const jetstream_client::Message& msg) {
-      if (msg.subject == "otel.traces") {
-        batcher.ProcessTraces(msg.payload);
-      } else if (msg.subject == "otel.metrics") {
-        batcher.ProcessMetrics(msg.payload);
-      } else if (msg.subject == "otel.logs") {
-        batcher.ProcessLogs(msg.payload);
-      }
-    });
+  std::atomic<bool> running{true};
+  std::thread consumer_thread([&]() {
+    while (running.load(std::memory_order_relaxed)) {
+      consumer.Poll([&batcher](const jetstream_client::Message& msg) {
+        if (msg.subject == "otel.traces") {
+          batcher.ProcessTraces(msg.payload);
+        } else if (msg.subject == "otel.metrics") {
+          batcher.ProcessMetrics(msg.payload);
+        } else if (msg.subject == "otel.logs") {
+          batcher.ProcessLogs(msg.payload);
+        }
+      });
+      batcher.FlushAll();
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
     batcher.FlushAll();
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+  });
+
+  const int signal = WaitForTerminationSignal();
+  std::clog << "Received signal " << signal << ", shutting down loader\n";
+
+  running.store(false, std::memory_order_relaxed);
+  if (consumer_thread.joinable()) {
+    consumer_thread.join();
   }
 
   return 0;
