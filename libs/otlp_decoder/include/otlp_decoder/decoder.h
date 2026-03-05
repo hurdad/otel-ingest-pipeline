@@ -12,9 +12,24 @@ struct TraceRow {
   std::string trace_id;
   std::string span_id;
   std::string parent_span_id;
+  std::string trace_state;
+  std::string span_name;
+  std::string span_kind;
   std::string service_name;
-  std::string operation_name;
+  std::map<std::string, std::string> resource_attributes;
+  std::string scope_name;
+  std::string scope_version;
+  std::map<std::string, std::string> span_attributes;
   uint64_t duration_ns;
+  std::string status_code;
+  std::string status_message;
+  std::vector<uint64_t> event_timestamps_ns;
+  std::vector<std::string> event_names;
+  std::vector<std::map<std::string, std::string>> event_attributes;
+  std::vector<std::string> link_trace_ids;
+  std::vector<std::string> link_span_ids;
+  std::vector<std::string> link_trace_states;
+  std::vector<std::map<std::string, std::string>> link_attributes;
 };
 
 struct MetricRow {

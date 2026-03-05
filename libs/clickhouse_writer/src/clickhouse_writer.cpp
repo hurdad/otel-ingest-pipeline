@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "clickhouse/client.h"
+#include "clickhouse/columns/array.h"
 #include "clickhouse/columns/date.h"
 #include "clickhouse/columns/lowcardinality.h"
 #include "clickhouse/columns/map.h"
@@ -43,32 +44,110 @@ void ClickHouseWriter::InsertTraces(const std::vector<otlp_decoder::TraceRow>& r
   try {
     auto client = impl_->connect();
 
-    auto ts_col        = std::make_shared<clickhouse::ColumnDateTime64>(9);
-    auto trace_id_col  = std::make_shared<clickhouse::ColumnString>();
-    auto span_id_col   = std::make_shared<clickhouse::ColumnString>();
+    auto ts_col = std::make_shared<clickhouse::ColumnDateTime64>(9);
+    auto trace_id_col = std::make_shared<clickhouse::ColumnString>();
+    auto span_id_col = std::make_shared<clickhouse::ColumnString>();
     auto parent_id_col = std::make_shared<clickhouse::ColumnString>();
-    auto svc_col       = std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
-    auto op_col        = std::make_shared<clickhouse::ColumnString>();
-    auto dur_col       = std::make_shared<clickhouse::ColumnUInt64>();
+    auto trace_state_col = std::make_shared<clickhouse::ColumnString>();
+    auto span_name_col =
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto span_kind_col =
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto service_name_col =
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto resource_attributes_col =
+        std::make_shared<clickhouse::ColumnMapT<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>,
+                                                 clickhouse::ColumnString>>(
+            std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>(),
+            std::make_shared<clickhouse::ColumnString>());
+    auto scope_name_col = std::make_shared<clickhouse::ColumnString>();
+    auto scope_version_col = std::make_shared<clickhouse::ColumnString>();
+    auto span_attributes_col =
+        std::make_shared<clickhouse::ColumnMapT<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>,
+                                                 clickhouse::ColumnString>>(
+            std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>(),
+            std::make_shared<clickhouse::ColumnString>());
+    auto duration_col = std::make_shared<clickhouse::ColumnUInt64>();
+    auto status_code_col =
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto status_message_col = std::make_shared<clickhouse::ColumnString>();
+    auto event_timestamps_col = std::make_shared<clickhouse::ColumnArrayT<clickhouse::ColumnDateTime64>>(
+        std::make_shared<clickhouse::ColumnDateTime64>(9));
+    auto event_names_col = std::make_shared<
+        clickhouse::ColumnArrayT<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>>(
+        std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>());
+    auto event_attributes_col =
+        std::make_shared<clickhouse::ColumnArrayT<
+            clickhouse::ColumnMapT<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>,
+                                   clickhouse::ColumnString>>>(
+            std::make_shared<clickhouse::ColumnMapT<
+                clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>, clickhouse::ColumnString>>(
+                std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>(),
+                std::make_shared<clickhouse::ColumnString>()));
+    auto link_trace_ids_col = std::make_shared<clickhouse::ColumnArrayT<clickhouse::ColumnString>>(
+        std::make_shared<clickhouse::ColumnString>());
+    auto link_span_ids_col = std::make_shared<clickhouse::ColumnArrayT<clickhouse::ColumnString>>(
+        std::make_shared<clickhouse::ColumnString>());
+    auto link_trace_states_col =
+        std::make_shared<clickhouse::ColumnArrayT<clickhouse::ColumnString>>(
+            std::make_shared<clickhouse::ColumnString>());
+    auto link_attributes_col =
+        std::make_shared<clickhouse::ColumnArrayT<
+            clickhouse::ColumnMapT<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>,
+                                   clickhouse::ColumnString>>>(
+            std::make_shared<clickhouse::ColumnMapT<
+                clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>, clickhouse::ColumnString>>(
+                std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>(),
+                std::make_shared<clickhouse::ColumnString>()));
 
     for (const auto& row : rows) {
       ts_col->Append(static_cast<int64_t>(row.timestamp_ns));
       trace_id_col->Append(row.trace_id);
       span_id_col->Append(row.span_id);
       parent_id_col->Append(row.parent_span_id);
-      svc_col->Append(std::string_view(row.service_name));
-      op_col->Append(row.operation_name);
-      dur_col->Append(row.duration_ns);
+      trace_state_col->Append(row.trace_state);
+      span_name_col->Append(std::string_view(row.span_name));
+      span_kind_col->Append(std::string_view(row.span_kind));
+      service_name_col->Append(std::string_view(row.service_name));
+      resource_attributes_col->Append(row.resource_attributes);
+      scope_name_col->Append(row.scope_name);
+      scope_version_col->Append(row.scope_version);
+      span_attributes_col->Append(row.span_attributes);
+      duration_col->Append(row.duration_ns);
+      status_code_col->Append(std::string_view(row.status_code));
+      status_message_col->Append(row.status_message);
+      event_timestamps_col->Append(row.event_timestamps_ns);
+      event_names_col->Append(row.event_names);
+      event_attributes_col->Append(row.event_attributes);
+      link_trace_ids_col->Append(row.link_trace_ids);
+      link_span_ids_col->Append(row.link_span_ids);
+      link_trace_states_col->Append(row.link_trace_states);
+      link_attributes_col->Append(row.link_attributes);
     }
 
     clickhouse::Block block;
-    block.AppendColumn("timestamp",      ts_col);
-    block.AppendColumn("trace_id",       trace_id_col);
-    block.AppendColumn("span_id",        span_id_col);
-    block.AppendColumn("parent_span_id", parent_id_col);
-    block.AppendColumn("service_name",   svc_col);
-    block.AppendColumn("operation_name", op_col);
-    block.AppendColumn("duration",       dur_col);
+    block.AppendColumn("Timestamp", ts_col);
+    block.AppendColumn("TraceId", trace_id_col);
+    block.AppendColumn("SpanId", span_id_col);
+    block.AppendColumn("ParentSpanId", parent_id_col);
+    block.AppendColumn("TraceState", trace_state_col);
+    block.AppendColumn("SpanName", span_name_col);
+    block.AppendColumn("SpanKind", span_kind_col);
+    block.AppendColumn("ServiceName", service_name_col);
+    block.AppendColumn("ResourceAttributes", resource_attributes_col);
+    block.AppendColumn("ScopeName", scope_name_col);
+    block.AppendColumn("ScopeVersion", scope_version_col);
+    block.AppendColumn("SpanAttributes", span_attributes_col);
+    block.AppendColumn("Duration", duration_col);
+    block.AppendColumn("StatusCode", status_code_col);
+    block.AppendColumn("StatusMessage", status_message_col);
+    block.AppendColumn("Events.Timestamp", event_timestamps_col);
+    block.AppendColumn("Events.Name", event_names_col);
+    block.AppendColumn("Events.Attributes", event_attributes_col);
+    block.AppendColumn("Links.TraceId", link_trace_ids_col);
+    block.AppendColumn("Links.SpanId", link_span_ids_col);
+    block.AppendColumn("Links.TraceState", link_trace_states_col);
+    block.AppendColumn("Links.Attributes", link_attributes_col);
 
     client.Insert("otel_traces", block);
     std::clog << "inserted traces rows=" << rows.size() << '\n';
@@ -86,10 +165,10 @@ void ClickHouseWriter::InsertMetrics(const std::vector<otlp_decoder::MetricRow>&
   try {
     auto client = impl_->connect();
 
-    auto ts_col     = std::make_shared<clickhouse::ColumnDateTime64>(9);
-    auto svc_col    = std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+    auto ts_col = std::make_shared<clickhouse::ColumnDateTime64>(9);
+    auto svc_col = std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
     auto metric_col = std::make_shared<clickhouse::ColumnString>();
-    auto value_col  = std::make_shared<clickhouse::ColumnFloat64>();
+    auto value_col = std::make_shared<clickhouse::ColumnFloat64>();
 
     for (const auto& row : rows) {
       ts_col->Append(static_cast<int64_t>(row.timestamp_ns));
@@ -99,10 +178,10 @@ void ClickHouseWriter::InsertMetrics(const std::vector<otlp_decoder::MetricRow>&
     }
 
     clickhouse::Block block;
-    block.AppendColumn("timestamp",   ts_col);
+    block.AppendColumn("timestamp", ts_col);
     block.AppendColumn("service_name", svc_col);
     block.AppendColumn("metric_name", metric_col);
-    block.AppendColumn("value",       value_col);
+    block.AppendColumn("value", value_col);
 
     client.Insert("otel_metrics", block);
     std::clog << "inserted metrics rows=" << rows.size() << '\n';
