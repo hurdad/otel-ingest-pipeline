@@ -14,6 +14,7 @@ class OtlpGrpcServer final {
  public:
   OtlpGrpcServer(std::string address, std::string nats_url);
   void Run();
+  void Shutdown();
 
  private:
   class TraceServiceImpl final
