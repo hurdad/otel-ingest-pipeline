@@ -195,8 +195,8 @@ std::vector<MetricRow> DecodeMetrics(const std::string& payload) {
     }
     for (const auto& sm : rm.scope_metrics()) {
       for (const auto& metric : sm.metrics()) {
-        const auto add = [&](uint64_t ts, double value) {
-          rows.push_back({ts, service_name, metric.name(), value});
+        const auto add = [&](uint64_t ts, double value, MetricType metric_type) {
+          rows.push_back({ts, service_name, metric.name(), value, metric_type});
         };
         const auto ndp_value = [](const NDP& dp) -> double {
           return dp.value_case() == NDP::kAsInt ? static_cast<double>(dp.as_int())
@@ -204,19 +204,23 @@ std::vector<MetricRow> DecodeMetrics(const std::string& payload) {
         };
         if (metric.has_gauge()) {
           for (const auto& dp : metric.gauge().data_points()) {
-            add(dp.time_unix_nano(), ndp_value(dp));
+            add(dp.time_unix_nano(), ndp_value(dp), MetricType::Gauge);
           }
         } else if (metric.has_sum()) {
           for (const auto& dp : metric.sum().data_points()) {
-            add(dp.time_unix_nano(), ndp_value(dp));
+            add(dp.time_unix_nano(), ndp_value(dp), MetricType::Sum);
           }
         } else if (metric.has_histogram()) {
           for (const auto& dp : metric.histogram().data_points()) {
-            add(dp.time_unix_nano(), dp.sum());
+            add(dp.time_unix_nano(), dp.sum(), MetricType::Histogram);
+          }
+        } else if (metric.has_exponential_histogram()) {
+          for (const auto& dp : metric.exponential_histogram().data_points()) {
+            add(dp.time_unix_nano(), dp.sum(), MetricType::ExponentialHistogram);
           }
         } else if (metric.has_summary()) {
           for (const auto& dp : metric.summary().data_points()) {
-            add(dp.time_unix_nano(), dp.sum());
+            add(dp.time_unix_nano(), dp.sum(), MetricType::Summary);
           }
         }
       }

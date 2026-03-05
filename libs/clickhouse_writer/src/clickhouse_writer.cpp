@@ -165,25 +165,89 @@ void ClickHouseWriter::InsertMetrics(const std::vector<otlp_decoder::MetricRow>&
   try {
     auto client = impl_->connect();
 
-    auto ts_col = std::make_shared<clickhouse::ColumnDateTime64>(9);
-    auto svc_col = std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
-    auto metric_col = std::make_shared<clickhouse::ColumnString>();
-    auto value_col = std::make_shared<clickhouse::ColumnFloat64>();
+    struct MetricInsertBuffer {
+      std::shared_ptr<clickhouse::ColumnDateTime64> start_time_col =
+          std::make_shared<clickhouse::ColumnDateTime64>(9);
+      std::shared_ptr<clickhouse::ColumnDateTime64> time_col =
+          std::make_shared<clickhouse::ColumnDateTime64>(9);
+      std::shared_ptr<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>> service_col =
+          std::make_shared<clickhouse::ColumnLowCardinalityT<clickhouse::ColumnString>>();
+      std::shared_ptr<clickhouse::ColumnString> metric_col = std::make_shared<clickhouse::ColumnString>();
+      std::shared_ptr<clickhouse::ColumnFloat64> value_col = std::make_shared<clickhouse::ColumnFloat64>();
+      std::shared_ptr<clickhouse::ColumnUInt64> count_col = std::make_shared<clickhouse::ColumnUInt64>();
+      std::shared_ptr<clickhouse::ColumnUInt32> flags_col = std::make_shared<clickhouse::ColumnUInt32>();
+
+      void Append(const otlp_decoder::MetricRow& row) {
+        const auto ts = static_cast<int64_t>(row.timestamp_ns);
+        start_time_col->Append(ts);
+        time_col->Append(ts);
+        service_col->Append(std::string_view(row.service_name));
+        metric_col->Append(row.metric_name);
+        value_col->Append(row.value);
+        count_col->Append(0);
+        flags_col->Append(0);
+      }
+
+      [[nodiscard]] size_t RowCount() const { return metric_col->Size(); }
+    };
+
+    MetricInsertBuffer gauge;
+    MetricInsertBuffer sum;
+    MetricInsertBuffer histogram;
+    MetricInsertBuffer exponential_histogram;
+    MetricInsertBuffer summary;
 
     for (const auto& row : rows) {
-      ts_col->Append(static_cast<int64_t>(row.timestamp_ns));
-      svc_col->Append(std::string_view(row.service_name));
-      metric_col->Append(row.metric_name);
-      value_col->Append(row.value);
+      switch (row.metric_type) {
+        case otlp_decoder::MetricType::Gauge:
+          gauge.Append(row);
+          break;
+        case otlp_decoder::MetricType::Sum:
+          sum.Append(row);
+          break;
+        case otlp_decoder::MetricType::Histogram:
+          histogram.Append(row);
+          break;
+        case otlp_decoder::MetricType::ExponentialHistogram:
+          exponential_histogram.Append(row);
+          break;
+        case otlp_decoder::MetricType::Summary:
+          summary.Append(row);
+          break;
+      }
     }
 
-    clickhouse::Block block;
-    block.AppendColumn("timestamp", ts_col);
-    block.AppendColumn("service_name", svc_col);
-    block.AppendColumn("metric_name", metric_col);
-    block.AppendColumn("value", value_col);
+    const auto insert_gauge_or_sum = [&](const char* table, const MetricInsertBuffer& buffer) {
+      if (buffer.RowCount() == 0) return;
+      clickhouse::Block block;
+      block.AppendColumn("StartTimeUnix", buffer.start_time_col);
+      block.AppendColumn("TimeUnix", buffer.time_col);
+      block.AppendColumn("ServiceName", buffer.service_col);
+      block.AppendColumn("MetricName", buffer.metric_col);
+      block.AppendColumn("Value", buffer.value_col);
+      block.AppendColumn("Flags", buffer.flags_col);
+      client.Insert(table, block);
+    };
 
-    client.Insert("otel_metrics", block);
+    const auto insert_histogram_or_summary = [&](const char* table, const MetricInsertBuffer& buffer) {
+      if (buffer.RowCount() == 0) return;
+      clickhouse::Block block;
+      block.AppendColumn("StartTimeUnix", buffer.start_time_col);
+      block.AppendColumn("TimeUnix", buffer.time_col);
+      block.AppendColumn("ServiceName", buffer.service_col);
+      block.AppendColumn("MetricName", buffer.metric_col);
+      block.AppendColumn("Count", buffer.count_col);
+      block.AppendColumn("Sum", buffer.value_col);
+      block.AppendColumn("Flags", buffer.flags_col);
+      client.Insert(table, block);
+    };
+
+    insert_gauge_or_sum("otel_metrics_gauge", gauge);
+    insert_gauge_or_sum("otel_metrics_sum", sum);
+    insert_histogram_or_summary("otel_metrics_histogram", histogram);
+    insert_histogram_or_summary("otel_metrics_exponentialhistogram", exponential_histogram);
+    insert_histogram_or_summary("otel_metrics_summary", summary);
+
     std::clog << "inserted metrics rows=" << rows.size() << '\n';
   } catch (const std::exception& e) {
     std::clog << "ClickHouse InsertMetrics error: " << e.what() << '\n';

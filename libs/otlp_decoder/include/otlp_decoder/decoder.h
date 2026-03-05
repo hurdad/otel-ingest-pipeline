@@ -32,11 +32,20 @@ struct TraceRow {
   std::vector<std::map<std::string, std::string>> link_attributes;
 };
 
+enum class MetricType {
+  Gauge,
+  Sum,
+  Histogram,
+  ExponentialHistogram,
+  Summary,
+};
+
 struct MetricRow {
   uint64_t timestamp_ns;
   std::string service_name;
   std::string metric_name;
   double value;
+  MetricType metric_type;
 };
 
 struct LogRow {
