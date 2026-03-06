@@ -56,7 +56,7 @@ COPY --from=builder /opt/otel/bin/otlp-gateway /usr/local/bin/otlp-gateway
 USER otel
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD nc -z localhost 4317 || exit 1
+    CMD nc -z localhost 4320 || exit 1
 
 ENTRYPOINT ["/usr/local/bin/otlp-gateway"]
 

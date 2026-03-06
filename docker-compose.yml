@@ -57,7 +57,7 @@ services:
       jetstream-init:
         condition: service_completed_successfully
     ports:
-      - "4317:4317"
+      - "4320:4320"
     volumes:
       - ./configs/gateway.yaml:/etc/otel-pipeline/gateway.yaml:ro
     environment:
@@ -95,8 +95,8 @@ services:
     volumes:
       - ./configs/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
+      - "4317:4317"
       - "8888:8888"
-      - "4318:4318"
 
   mongodb:
     image: mongo:7.0

@@ -6,7 +6,7 @@
 #include <yaml-cpp/yaml.h>
 
 struct GatewayConfig {
-  std::string listen_addr = "0.0.0.0:4317";
+  std::string listen_addr = "0.0.0.0:4320";
   std::string nats_url    = "nats://localhost:4222";
   std::string nats_stream = "OTEL_TELEMETRY";
   std::string trace_subject  = "otel.traces";

@@ -6,7 +6,7 @@ receivers:
   prometheus:
     config:
       scrape_configs:
-        - job_name: otel-collector-self-telemetry
+        - job_name: otel-collector
           scrape_interval: 10s
           static_configs:
             - targets: ["0.0.0.0:8888"]
@@ -29,7 +29,7 @@ processors:
 
 exporters:
   otlp:
-    endpoint: otlp-gateway:4317
+    endpoint: otlp-gateway:4320
     tls:
       insecure: true
     compression: gzip

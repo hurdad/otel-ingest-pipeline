@@ -3,15 +3,56 @@
 ## Architecture
 
 ```text
-OpenTelemetry Collector
-        ↓ OTLP gRPC
-otlp-gateway
-        ↓
-NATS JetStream
-        ↓
-jetstream-clickhouse-loader
-        ↓
-ClickHouse
+┌─────────────────────────────────────────────────────────────────┐
+│                        Applications                             │
+│        (FastAPI, services, any OTel-instrumented app)           │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ OTLP gRPC  :4317
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   OpenTelemetry Collector                        │
+│  receivers: OTLP gRPC (:4317)                                   │
+│  processors: batch                                              │
+│  exporters: OTLP gRPC → otlp-gateway (:4320)                   │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ OTLP gRPC  :4320
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       otlp-gateway  (C++)                        │
+│  gRPC server (:4320)                                            │
+│  Deserializes ExportTraces/Metrics/LogsServiceRequest protobufs │
+│  Publishes raw protobuf bytes to NATS JetStream subjects        │
+└──────────┬───────────────────────┬──────────────────────────────┘
+           │ otel.traces           │ otel.metrics / otel.logs
+           ▼                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      NATS JetStream                             │
+│  Stream: OTEL_TELEMETRY                                         │
+│  Subjects: otel.traces | otel.metrics | otel.logs               │
+│  Retention: limits, max-age 24h, file storage                   │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ consume
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              jetstream-clickhouse-loader  (C++)                  │
+│  Decodes OTLP protobuf → TraceRow / MetricRow / LogRow structs  │
+│  Batches rows (50k rows or 2s flush interval)                   │
+│  Inserts via ClickHouse native protocol                         │
+└──────────┬───────────────────────────────────────────────────── ┘
+           │ native protocol  :9000
+           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         ClickHouse                              │
+│  otel.otel_traces                                               │
+│  otel.otel_metrics_{gauge,sum,histogram,exphistogram,summary}   │
+│  otel.otel_logs                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+Self-telemetry (gateway + loader → otel-collector → otlp-gateway):
+  OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317  (insecure gRPC)
+
+Observability UI:
+  HyperDX  :8090  ←  MongoDB  :27017
 ```
 
 The repository contains two C++20 services:
@@ -28,7 +69,6 @@ docker compose up --build
 
 Then send OTLP data to the collector:
 - gRPC: `localhost:4317`
-- HTTP: `localhost:4318`
 
 The compose stack starts Collector → Gateway → NATS JetStream → Loader → ClickHouse, and initializes both the JetStream stream and ClickHouse schema automatically.
 
@@ -93,7 +133,7 @@ This wires unit-test executables for first-party libraries under `libs/` (and op
 1. Start NATS with JetStream and ClickHouse.
 2. Apply stream and table schema scripts.
 3. Run gateway and loader binaries.
-4. Configure OpenTelemetry Collector to export OTLP to `otlp-gateway:4317`.
+4. Configure OpenTelemetry Collector to export OTLP to `otlp-gateway:4320`.
 
 Configuration examples are in `configs/gateway.yaml` and `configs/loader.yaml`.
 
@@ -200,14 +240,16 @@ For before/after memory-pressure comparisons, run the same ingest load profile t
 ## Docker Compose full pipeline
 
 A ready-to-run compose stack is provided in `docker-compose.yml` with:
-- OpenTelemetry Collector (`otel-collector`)
-- OTLP Gateway (`otlp-gateway`)
+- OpenTelemetry Collector (`otel-collector`) — OTLP gRPC receiver on `:4317`
+- OTLP Gateway (`otlp-gateway`) — gRPC ingest on `:4320` (internal)
 - NATS JetStream (`nats`)
 - JetStream stream bootstrap job (`jetstream-init`)
 - ClickHouse (`clickhouse`)
 - JetStream loader (`jetstream-clickhouse-loader`)
-- FastAPI sample app (`fastapi-rest-sample`)
+- FastAPI sample app (`fastapi-rest-sample`) — exposed on `:8080`
 - Locust headless load generator (`fastapi-rest-sample-loadgen`)
+- MongoDB (`mongodb`) — backend for HyperDX
+- HyperDX (`hyperdx`) — observability UI on `:8090`
 
 Start everything:
 
@@ -217,9 +259,8 @@ docker compose up --build
 
 Send OTLP data to the collector at:
 - gRPC: `localhost:4317`
-- HTTP: `localhost:4318`
 
-The collector forwards telemetry to the gateway, which publishes to JetStream subjects (`otel.traces`, `otel.metrics`, `otel.logs`).
+The collector forwards telemetry to the gateway on `:4320`, which publishes to JetStream subjects (`otel.traces`, `otel.metrics`, `otel.logs`).
 
 ClickHouse tables are auto-created from `scripts/clickhouse_schema.sql` at container startup.
 

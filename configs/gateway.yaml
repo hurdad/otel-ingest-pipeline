@@ -1,5 +1,5 @@
 server:
-  listen: 0.0.0.0:4317
+  listen: 0.0.0.0:4320
 nats:
   url: nats://nats:4222
   stream: OTEL_TELEMETRY
