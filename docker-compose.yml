@@ -98,19 +98,17 @@ services:
       - "4317:4317"
       - "8888:8888"
 
-  mongodb:
-    image: mongo:7.0
-    volumes:
-      - mongodb-data:/data/db
-
   hyperdx:
     image: hyperdx/hyperdx-local:latest
     depends_on:
-      - mongodb
+      - clickhouse
     environment:
-      MONGO_URI: "mongodb://mongodb:27017/hyperdx"
       HYPERDX_LOG_LEVEL: "0"
       FRONTEND_URL: "http://localhost:8090"
+      CLICKHOUSE_ENDPOINT: "tcp://clickhouse:9000?dial_timeout=10s"
+      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: "otel"
+      DEFAULT_CONNECTIONS: '[{"name":"Pipeline ClickHouse","host":"http://localhost:8123","username":"otel","password":"otel"}]'
+      DEFAULT_SOURCES: '[{"from":{"databaseName":"otel","tableName":"otel_logs"},"kind":"log","timestampValueExpression":"TimestampTime","name":"Logs","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Pipeline ClickHouse","traceSourceId":"Traces","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"otel","tableName":"otel_traces"},"kind":"trace","timestampValueExpression":"Timestamp","name":"Traces","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,StatusCode,round(Duration/1e6),SpanName","traceIdExpression":"TraceId","spanIdExpression":"SpanId","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanNameExpression":"SpanName","spanKindExpression":"SpanKind","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage","connection":"Pipeline ClickHouse","logSourceId":"Logs","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"otel","tableName":""},"kind":"metric","timestampValueExpression":"TimeUnix","name":"Metrics","resourceAttributesExpression":"ResourceAttributes","metricTables":{"gauge":"otel_metrics_gauge","histogram":"otel_metrics_histogram","sum":"otel_metrics_sum","summary":"otel_metrics_summary","exponentialHistogram":"otel_metrics_exponentialhistogram"},"connection":"Pipeline ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","sessionSourceId":"Sessions"},{"from":{"databaseName":"otel","tableName":"hyperdx_sessions"},"kind":"session","timestampValueExpression":"TimestampTime","name":"Sessions","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Pipeline ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","metricSourceId":"Metrics"}]'
     ports:
       - "8090:8080"
 
@@ -148,4 +146,3 @@ services:
 volumes:
   nats-data:
   clickhouse-data:
-  mongodb-data:
