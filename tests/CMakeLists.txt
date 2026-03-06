@@ -21,3 +21,13 @@ if(TARGET telemetry)
   target_link_libraries(telemetry_tests PRIVATE telemetry GTest::gtest GTest::gtest_main)
   add_test(NAME telemetry_tests COMMAND telemetry_tests)
 endif()
+
+add_executable(grpc_export_handler_tests
+  grpc_export_handler_tests.cpp)
+target_include_directories(grpc_export_handler_tests PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(grpc_export_handler_tests PRIVATE
+  GTest::gtest
+  GTest::gtest_main
+  gRPC::grpc++
+  spdlog::spdlog)
+add_test(NAME grpc_export_handler_tests COMMAND grpc_export_handler_tests)
