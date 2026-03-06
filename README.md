@@ -52,7 +52,7 @@ Self-telemetry (gateway + loader → otel-collector → otlp-gateway):
   OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317  (insecure gRPC)
 
 Observability UI:
-  HyperDX  :8090  ←  MongoDB  :27017
+  HyperDX  :8090  (MongoDB internal)
 ```
 
 The repository contains two C++20 services:
@@ -246,8 +246,7 @@ A ready-to-run compose stack is provided in `docker-compose.yml` with:
 - JetStream loader (`jetstream-clickhouse-loader`)
 - FastAPI sample app (`fastapi-rest-sample`) — exposed on `:8080`
 - Locust headless load generator (`fastapi-rest-sample-loadgen`)
-- MongoDB (`mongodb`) — backend for HyperDX
-- HyperDX (`hyperdx`) — observability UI on `:8090`
+- HyperDX (`hyperdx`) — observability UI on `:8090` (MongoDB bundled internally)
 
 Start everything:
 
