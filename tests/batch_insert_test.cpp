@@ -11,7 +11,7 @@ namespace {
 using clickhouse_writer::BatchInsert;
 using otlp_decoder::TraceRow;
 
-TEST(BatchInsertFocusedTest, CallsInserterWhenMaxRowsReached) {
+TEST(BatchInsertTest, CallsInserterWhenMaxRowsReached) {
   BatchInsert<TraceRow> batcher(2, std::chrono::seconds(1));
   int inserter_calls = 0;
   std::vector<std::vector<TraceRow>> snapshots;
@@ -36,7 +36,7 @@ TEST(BatchInsertFocusedTest, CallsInserterWhenMaxRowsReached) {
   EXPECT_EQ(snapshots[0][1].trace_id, second.trace_id);
 }
 
-TEST(BatchInsertFocusedTest, FlushCallsInserterOnceAndClearsBuffer) {
+TEST(BatchInsertTest, FlushCallsInserterOnceAndClearsBuffer) {
   BatchInsert<TraceRow> batcher(10, std::chrono::seconds(1));
   int inserter_calls = 0;
   std::vector<std::vector<TraceRow>> snapshots;
@@ -60,7 +60,7 @@ TEST(BatchInsertFocusedTest, FlushCallsInserterOnceAndClearsBuffer) {
   EXPECT_EQ(inserter_calls, 1);
 }
 
-TEST(BatchInsertFocusedTest, FlushNoOpWhenBufferEmpty) {
+TEST(BatchInsertTest, FlushNoOpWhenBufferEmpty) {
   BatchInsert<TraceRow> batcher(10, std::chrono::seconds(1));
   int inserter_calls = 0;
   std::vector<std::vector<TraceRow>> snapshots;
@@ -76,7 +76,7 @@ TEST(BatchInsertFocusedTest, FlushNoOpWhenBufferEmpty) {
   EXPECT_TRUE(snapshots.empty());
 }
 
-TEST(BatchInsertFocusedTest, AddTriggersFlushWhenIntervalElapsed) {
+TEST(BatchInsertTest, AddTriggersFlushWhenIntervalElapsed) {
   BatchInsert<TraceRow> batcher(100, std::chrono::milliseconds(1));
   int inserter_calls = 0;
   std::vector<std::vector<TraceRow>> snapshots;
@@ -100,6 +100,59 @@ TEST(BatchInsertFocusedTest, AddTriggersFlushWhenIntervalElapsed) {
   ASSERT_EQ(snapshots[0].size(), 2U);
   EXPECT_EQ(snapshots[0][0].trace_id, first.trace_id);
   EXPECT_EQ(snapshots[0][1].trace_id, second.trace_id);
+}
+
+TEST(ClickHouseWriterSchemaTest, MetricInsertBlocksContainAllSchemaColumns) {
+  EXPECT_EQ(clickhouse_writer::RequiredMetricColumnsForTable("otel_metrics_gauge"),
+            (std::vector<std::string>{"ResourceAttributes", "ResourceSchemaUrl", "ScopeName",
+                                      "ScopeVersion", "ScopeAttributes", "ScopeDroppedAttrCount",
+                                      "ScopeSchemaUrl", "ServiceName", "MetricName",
+                                      "MetricDescription", "MetricUnit", "Attributes",
+                                      "StartTimeUnix", "TimeUnix", "Value", "Flags",
+                                      "Exemplars.FilteredAttributes", "Exemplars.TimeUnix",
+                                      "Exemplars.Value", "Exemplars.SpanId", "Exemplars.TraceId"}));
+
+  EXPECT_EQ(clickhouse_writer::RequiredMetricColumnsForTable("otel_metrics_sum"),
+            (std::vector<std::string>{"ResourceAttributes", "ResourceSchemaUrl", "ScopeName",
+                                      "ScopeVersion", "ScopeAttributes", "ScopeDroppedAttrCount",
+                                      "ScopeSchemaUrl", "ServiceName", "MetricName",
+                                      "MetricDescription", "MetricUnit", "Attributes",
+                                      "StartTimeUnix", "TimeUnix", "Value", "Flags",
+                                      "Exemplars.FilteredAttributes", "Exemplars.TimeUnix",
+                                      "Exemplars.Value", "Exemplars.SpanId", "Exemplars.TraceId",
+                                      "AggregationTemporality", "IsMonotonic"}));
+
+  EXPECT_EQ(clickhouse_writer::RequiredMetricColumnsForTable("otel_metrics_histogram"),
+            (std::vector<std::string>{"ResourceAttributes", "ResourceSchemaUrl", "ScopeName",
+                                      "ScopeVersion", "ScopeAttributes", "ScopeDroppedAttrCount",
+                                      "ScopeSchemaUrl", "ServiceName", "MetricName",
+                                      "MetricDescription", "MetricUnit", "Attributes",
+                                      "StartTimeUnix", "TimeUnix", "Count", "Sum",
+                                      "BucketCounts", "ExplicitBounds",
+                                      "Exemplars.FilteredAttributes", "Exemplars.TimeUnix",
+                                      "Exemplars.Value", "Exemplars.SpanId", "Exemplars.TraceId",
+                                      "Flags", "Min", "Max", "AggregationTemporality"}));
+
+  EXPECT_EQ(clickhouse_writer::RequiredMetricColumnsForTable("otel_metrics_exponentialhistogram"),
+            (std::vector<std::string>{"ResourceAttributes", "ResourceSchemaUrl", "ScopeName",
+                                      "ScopeVersion", "ScopeAttributes", "ScopeDroppedAttrCount",
+                                      "ScopeSchemaUrl", "ServiceName", "MetricName",
+                                      "MetricDescription", "MetricUnit", "Attributes",
+                                      "StartTimeUnix", "TimeUnix", "Count", "Sum", "Scale",
+                                      "ZeroCount", "PositiveOffset", "PositiveBucketCounts",
+                                      "NegativeOffset", "NegativeBucketCounts",
+                                      "Exemplars.FilteredAttributes", "Exemplars.TimeUnix",
+                                      "Exemplars.Value", "Exemplars.SpanId", "Exemplars.TraceId",
+                                      "Flags", "Min", "Max", "AggregationTemporality"}));
+
+  EXPECT_EQ(clickhouse_writer::RequiredMetricColumnsForTable("otel_metrics_summary"),
+            (std::vector<std::string>{"ResourceAttributes", "ResourceSchemaUrl", "ScopeName",
+                                      "ScopeVersion", "ScopeAttributes", "ScopeDroppedAttrCount",
+                                      "ScopeSchemaUrl", "ServiceName", "MetricName",
+                                      "MetricDescription", "MetricUnit", "Attributes",
+                                      "StartTimeUnix", "TimeUnix", "Count", "Sum",
+                                      "ValueAtQuantiles.Quantile", "ValueAtQuantiles.Value",
+                                      "Flags"}));
 }
 
 }  // namespace
