@@ -20,7 +20,8 @@ receivers:
       load: {}
       network: {}
       paging: {}
-      process: {}
+      process:
+        mute_process_user_error: true
       processes: {}
 
 processors:
