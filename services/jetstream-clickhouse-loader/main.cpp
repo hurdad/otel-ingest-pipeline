@@ -112,20 +112,28 @@ int main() {
 
     std::atomic<bool> running{true};
     std::thread consumer_thread([&]() {
-      while (running.load(std::memory_order_relaxed)) {
-        consumer.Poll([&batcher, &cfg](const jetstream_client::Message &msg) {
-          if (msg.subject == cfg.trace_subject) {
-            batcher.ProcessTraces(msg.payload);
-          } else if (msg.subject == cfg.metric_subject) {
-            batcher.ProcessMetrics(msg.payload);
-          } else if (msg.subject == cfg.log_subject) {
-            batcher.ProcessLogs(msg.payload);
-          }
-        });
+      try {
+        while (running.load(std::memory_order_relaxed)) {
+          consumer.Poll([&batcher, &cfg](const jetstream_client::Message &msg) {
+            if (msg.subject == cfg.trace_subject) {
+              batcher.ProcessTraces(msg.payload);
+            } else if (msg.subject == cfg.metric_subject) {
+              batcher.ProcessMetrics(msg.payload);
+            } else if (msg.subject == cfg.log_subject) {
+              batcher.ProcessLogs(msg.payload);
+            }
+          });
+          batcher.FlushAll();
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
         batcher.FlushAll();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+      } catch (const std::exception &e) {
+        spdlog::critical("Fatal consumer loop error: {}", e.what());
+        running.store(false, std::memory_order_relaxed);
+      } catch (...) {
+        spdlog::critical("Fatal consumer loop error: unknown exception");
+        running.store(false, std::memory_order_relaxed);
       }
-      batcher.FlushAll();
     });
 
     int received_signal = 0;

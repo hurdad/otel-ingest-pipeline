@@ -7,6 +7,8 @@
 
 namespace jetstream_client {
 
+struct Message;
+
 namespace testing {
 
 // Test seam used to simulate connection outcomes without requiring a live NATS
@@ -14,6 +16,12 @@ namespace testing {
 void ForceInitializationSuccessForTests();
 void ForceInitializationFailureForTests();
 void ResetInitializationBehaviorForTests();
+
+// Exercises the same handler exception containment policy used by
+// JetStreamConsumer::Poll.
+bool InvokeConsumerHandlerForTests(
+    const Message &message,
+    const std::function<void(const Message &)> &handler);
 
 } // namespace testing
 
@@ -43,6 +51,9 @@ public:
   JetStreamConsumer(std::string url, std::string stream,
                     std::vector<std::string> subjects);
   ~JetStreamConsumer();
+  // Failure policy: only ack messages after successful handler execution.
+  // If the handler throws, Poll logs and sends nak() for explicit retry
+  // signaling; handler exceptions are contained within Poll.
   void Poll(const Handler &handler);
 
 private:
