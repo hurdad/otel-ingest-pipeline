@@ -50,8 +50,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /opt/otel/bin/otlp-gateway /usr/local/bin/otlp-gateway
 
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
-
 ENTRYPOINT ["/usr/local/bin/otlp-gateway"]
 
 # ---------------------------------------------------------------------------
@@ -72,7 +70,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/otel/bin/jetstream-clickhouse-loader /usr/local/bin/jetstream-clickhouse-loader
-
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 
 ENTRYPOINT ["/usr/local/bin/jetstream-clickhouse-loader"]

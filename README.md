@@ -172,11 +172,7 @@ By default, the container starts `otlp-gateway`.
 
 The build enables jemalloc by default on Linux via `-DOTEL_PIPELINE_USE_JEMALLOC=ON` and links it into both service binaries (`otlp-gateway`, `jetstream-clickhouse-loader`).
 
-In container images, jemalloc is also configured as a runtime fallback with:
-
-```bash
-LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
-```
+Because services are linked against jemalloc at build time, `LD_PRELOAD` is not required to activate jemalloc in runtime images.
 
 You can tune allocator behavior using `MALLOC_CONF`. Example values:
 
@@ -194,9 +190,6 @@ Validation checklist:
 # Verify jemalloc is linked
 ldd /usr/local/bin/otlp-gateway | grep jemalloc
 ldd /usr/local/bin/jetstream-clickhouse-loader | grep jemalloc
-
-# Verify preload fallback is present
-echo "$LD_PRELOAD"
 
 # Optional allocator stats at process exit
 MALLOC_CONF=stats_print:true /usr/local/bin/otlp-gateway --config /etc/otel/gateway.yaml
