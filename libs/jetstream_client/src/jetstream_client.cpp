@@ -19,6 +19,22 @@ enum class InitBehaviorOverride {
 
 InitBehaviorOverride g_init_behavior_override = InitBehaviorOverride::kDefault;
 
+bool invoke_handler_with_policy(const std::string &subject,
+                                const std::string &payload,
+                                const JetStreamConsumer::Handler &handler) {
+  try {
+    handler(Message{subject, payload});
+    return true;
+  } catch (const std::exception &e) {
+    std::clog << "JetStream handler error subject=" << subject << ": "
+              << e.what() << '\n';
+  } catch (...) {
+    std::clog << "JetStream handler error subject=" << subject
+              << ": unknown exception\n";
+  }
+  return false;
+}
+
 // Creates the stream if it doesn't already exist.
 void ensure_stream(natscpp::jetstream &js, const std::string &stream_name,
                    const std::vector<std::string> &subjects) {
@@ -136,8 +152,13 @@ void JetStreamConsumer::Poll(const Handler &handler) {
     while (true) {
       try {
         auto msg = impl_->consumers[i].next(std::chrono::milliseconds(100));
-        handler(Message{std::string(msg.subject()), std::string(msg.data())});
-        msg.ack();
+        const std::string subject(msg.subject());
+        const std::string payload(msg.data());
+        if (invoke_handler_with_policy(subject, payload, handler)) {
+          msg.ack();
+        } else {
+          msg.nak();
+        }
       } catch (const natscpp::nats_error &e) {
         if (e.status() != NATS_TIMEOUT) {
           std::clog << "JetStream consume error subject=" << impl_->subjects[i]
@@ -150,6 +171,12 @@ void JetStreamConsumer::Poll(const Handler &handler) {
 }
 
 namespace testing {
+
+bool InvokeConsumerHandlerForTests(
+    const Message &message,
+    const std::function<void(const Message &)> &handler) {
+  return invoke_handler_with_policy(message.subject, message.payload, handler);
+}
 
 void ForceInitializationSuccessForTests() {
   g_init_behavior_override = InitBehaviorOverride::kForceSuccess;

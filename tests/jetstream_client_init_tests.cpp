@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <stdexcept>
+#include <string>
 
 namespace {
 
@@ -46,6 +47,22 @@ TEST(JetStreamConsumerInitTest, ThrowsWhenInitialConnectFails) {
       },
       std::runtime_error);
   jetstream_client::testing::ResetInitializationBehaviorForTests();
+}
+
+
+TEST(JetStreamConsumerBehaviorTest, ContainsHandlerExceptions) {
+  const jetstream_client::Message message{"otel.traces", "payload"};
+
+  EXPECT_FALSE(jetstream_client::testing::InvokeConsumerHandlerForTests(
+      message, [](const jetstream_client::Message &) {
+        throw std::runtime_error("handler failure");
+      }));
+
+  EXPECT_TRUE(jetstream_client::testing::InvokeConsumerHandlerForTests(
+      message, [](const jetstream_client::Message &msg) {
+        EXPECT_EQ(msg.subject, "otel.traces");
+        EXPECT_EQ(msg.payload, "payload");
+      }));
 }
 
 } // namespace
