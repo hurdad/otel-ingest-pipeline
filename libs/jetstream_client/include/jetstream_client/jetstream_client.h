@@ -17,6 +17,20 @@ void ForceInitializationSuccessForTests();
 void ForceInitializationFailureForTests();
 void ResetInitializationBehaviorForTests();
 
+// RAII guard that activates an init override and resets it on destruction,
+// preventing leaked state if the test throws.
+struct InitOverrideGuard {
+  explicit InitOverrideGuard(bool force_success) {
+    if (force_success)
+      ForceInitializationSuccessForTests();
+    else
+      ForceInitializationFailureForTests();
+  }
+  ~InitOverrideGuard() { ResetInitializationBehaviorForTests(); }
+  InitOverrideGuard(const InitOverrideGuard &) = delete;
+  InitOverrideGuard &operator=(const InitOverrideGuard &) = delete;
+};
+
 // Exercises the same handler exception containment policy used by
 // JetStreamConsumer::Poll.
 bool InvokeConsumerHandlerForTests(

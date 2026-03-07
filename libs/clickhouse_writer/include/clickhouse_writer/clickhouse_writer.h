@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "otlp_decoder/decoder.h"
+#include "spdlog/spdlog.h"
 
 namespace clickhouse_writer {
 
@@ -37,6 +38,8 @@ class BatchInsert {
   void Add(T row, const Inserter& inserter) {
     // Cap accumulated rows to prevent OOM during persistent ClickHouse failure.
     if (rows_.size() >= max_rows_ * 10) {
+      spdlog::error("BatchInsert: OOM guard triggered, discarding {} accumulated rows "
+                    "(ClickHouse unavailable?)", rows_.size());
       rows_.clear();
       last_flush_ = std::chrono::steady_clock::now();
     }

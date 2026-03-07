@@ -58,17 +58,27 @@ std::string BytesToHex(const std::string& bytes) {
 std::string AnyValueToString(const opentelemetry::proto::common::v1::AnyValue& value);
 
 // Returns the JSON representation of a scalar string (double-quoted, escaped).
+// Escapes all C0 control characters (U+0000–U+001F) per RFC 8259 §7.
 std::string JsonQuoteString(const std::string& s) {
   std::string out;
   out.push_back('"');
   for (const char c : s) {
+    const auto uc = static_cast<unsigned char>(c);
     switch (c) {
       case '"':  out += "\\\""; break;
       case '\\': out += "\\\\"; break;
       case '\n': out += "\\n";  break;
       case '\r': out += "\\r";  break;
       case '\t': out += "\\t";  break;
-      default:   out.push_back(c); break;
+      default:
+        if (uc < 0x20) {
+          char buf[7];
+          std::snprintf(buf, sizeof(buf), "\\u%04x", uc);
+          out += buf;
+        } else {
+          out.push_back(c);
+        }
+        break;
     }
   }
   out.push_back('"');

@@ -49,10 +49,21 @@ int RunServerUntilSignalOrFailure(
     }
   }
 
-  shutdown_server();
+  // Always join the server thread, even if shutdown_server throws.
+  // Capture any shutdown exception and rethrow after the join.
+  std::exception_ptr shutdown_exception;
+  try {
+    shutdown_server();
+  } catch (...) {
+    shutdown_exception = std::current_exception();
+  }
 
   if (server_thread.joinable()) {
     server_thread.join();
+  }
+
+  if (shutdown_exception) {
+    std::rethrow_exception(shutdown_exception);
   }
 
   if (server_failed.load(std::memory_order_acquire)) {

@@ -1,10 +1,10 @@
 #include "jetstream_client/jetstream_client.h"
 
 #include <algorithm>
-#include <iostream>
 #include <mutex>
 #include <stdexcept>
 
+#include "spdlog/spdlog.h"
 #include "telemetry/tracer.h"
 #include <natscpp/natscpp.hpp>
 
@@ -28,11 +28,9 @@ bool invoke_handler_with_policy(const std::string &subject,
     handler(Message{subject, payload});
     return true;
   } catch (const std::exception &e) {
-    std::clog << "JetStream handler error subject=" << subject << ": "
-              << e.what() << '\n';
+    spdlog::error("JetStream handler error subject={}: {}", subject, e.what());
   } catch (...) {
-    std::clog << "JetStream handler error subject=" << subject
-              << ": unknown exception\n";
+    spdlog::error("JetStream handler error subject={}: unknown exception", subject);
   }
   return false;
 }
@@ -45,7 +43,7 @@ void ensure_stream(natscpp::jetstream &js, const std::string &stream_name,
   } catch (const natscpp::nats_error &e) {
     if (e.status() == NATS_NOT_FOUND) {
       js.create_stream({stream_name, subjects});
-      std::clog << "JetStream stream created name=" << stream_name << '\n';
+      spdlog::info("JetStream stream created name={}", stream_name);
     } else {
       throw;
     }
@@ -71,8 +69,7 @@ void ensure_consumer_group(natscpp::jetstream &js, const std::string &stream_nam
           .max_ack_pending = 1000,
           .max_waiting = 512,
       });
-      std::clog << "JetStream consumer created stream=" << stream_name
-                << " durable=" << durable_name << '\n';
+      spdlog::info("JetStream consumer created stream={} durable={}", stream_name, durable_name);
     } else {
       throw;
     }
@@ -119,8 +116,7 @@ JetStreamPublisher::~JetStreamPublisher() = default;
 bool JetStreamPublisher::Publish(const std::string &subject, const void *data,
                                  size_t size) {
   if (!impl_) {
-    std::clog << "JetStream publisher not connected, dropping subject="
-              << subject << '\n';
+    spdlog::warn("JetStream publisher not connected, dropping subject={}", subject);
     return false;
   }
   auto span = telemetry::StartSpan("jetstream_publish");
@@ -129,8 +125,7 @@ bool JetStreamPublisher::Publish(const std::string &subject, const void *data,
         subject, std::string_view(static_cast<const char *>(data), size));
     return true;
   } catch (const natscpp::nats_error &e) {
-    std::clog << "JetStream publish error subject=" << subject << ": "
-              << e.what() << '\n';
+    spdlog::error("JetStream publish error subject={}: {}", subject, e.what());
     return false;
   }
 }
@@ -185,7 +180,7 @@ JetStreamConsumer::~JetStreamConsumer() = default;
 
 void JetStreamConsumer::Poll(const Handler &handler) {
   if (!impl_) {
-    std::clog << "JetStream consumer not connected, skipping poll\n";
+    spdlog::warn("JetStream consumer not connected, skipping poll");
     return;
   }
   auto span = telemetry::StartSpan("jetstream_consume");
@@ -203,8 +198,7 @@ void JetStreamConsumer::Poll(const Handler &handler) {
         }
       } catch (const natscpp::nats_error &e) {
         if (e.status() != NATS_TIMEOUT) {
-          std::clog << "JetStream consume error subject=" << impl_->subjects[i]
-                    << ": " << e.what() << '\n';
+          spdlog::error("JetStream consume error subject={}: {}", impl_->subjects[i], e.what());
         }
         break;
       }

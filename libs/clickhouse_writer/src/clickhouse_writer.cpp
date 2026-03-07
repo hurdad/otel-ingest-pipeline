@@ -12,6 +12,7 @@
 #include "clickhouse/columns/map.h"
 #include "clickhouse/columns/numeric.h"
 #include "clickhouse/columns/string.h"
+#include "spdlog/spdlog.h"
 #include "telemetry/tracer.h"
 
 namespace clickhouse_writer {
@@ -25,6 +26,16 @@ constexpr uint64_t kSafeInt64Max =
 
 int64_t SafeTimestamp(uint64_t ns) noexcept {
   return static_cast<int64_t>(std::min(ns, kSafeInt64Max));
+}
+
+// Apply SafeTimestamp to every element of a nanosecond timestamp vector.
+std::vector<int64_t> SafeTimestamps(const std::vector<uint64_t>& ns_values) noexcept {
+  std::vector<int64_t> out;
+  out.reserve(ns_values.size());
+  for (uint64_t v : ns_values) {
+    out.push_back(SafeTimestamp(v));
+  }
+  return out;
 }
 
 }  // namespace
@@ -178,7 +189,7 @@ bool ClickHouseWriter::InsertTraces(const std::vector<otlp_decoder::TraceRow>& r
       duration_col->Append(row.duration_ns);
       status_code_col->Append(std::string_view(row.status_code));
       status_message_col->Append(row.status_message);
-      event_timestamps_col->Append(row.event_timestamps_ns);
+      event_timestamps_col->Append(SafeTimestamps(row.event_timestamps_ns));
       event_names_col->Append(row.event_names);
       event_attributes_col->Append(row.event_attributes);
       link_trace_ids_col->Append(row.link_trace_ids);
@@ -213,12 +224,12 @@ bool ClickHouseWriter::InsertTraces(const std::vector<otlp_decoder::TraceRow>& r
 
     client.Insert("otel_traces", block);
     telemetry::RecordClickHouseRowsInserted(static_cast<uint64_t>(rows.size()));
-    std::clog << "inserted traces rows=" << rows.size() << '\n';
+    spdlog::info("inserted traces rows={}", rows.size());
     return true;
   } catch (const std::exception& e) {
     impl_->ResetClient();
     telemetry::RecordClickHouseInsertError();
-    std::clog << "ClickHouse InsertTraces error: " << e.what() << '\n';
+    spdlog::error("ClickHouse InsertTraces error: {}", e.what());
     return false;
   }
 }
@@ -348,7 +359,7 @@ bool ClickHouseWriter::InsertMetrics(const std::vector<otlp_decoder::MetricRow>&
         is_monotonic_col->Append(row.is_monotonic ? 1 : 0);
 
         exemplar_filtered_attributes_col->Append(row.exemplar_filtered_attributes);
-        exemplar_time_col->Append(row.exemplar_timestamps_ns);
+        exemplar_time_col->Append(SafeTimestamps(row.exemplar_timestamps_ns));
         exemplar_value_col->Append(row.exemplar_values);
         exemplar_span_id_col->Append(row.exemplar_span_ids);
         exemplar_trace_id_col->Append(row.exemplar_trace_ids);
@@ -441,12 +452,12 @@ bool ClickHouseWriter::InsertMetrics(const std::vector<otlp_decoder::MetricRow>&
     if (summary)              insert_block("otel_metrics_summary",              *summary);
 
     telemetry::RecordClickHouseRowsInserted(static_cast<uint64_t>(rows.size()));
-    std::clog << "inserted metrics rows=" << rows.size() << '\n';
+    spdlog::info("inserted metrics rows={}", rows.size());
     return true;
   } catch (const std::exception& e) {
     impl_->ResetClient();
     telemetry::RecordClickHouseInsertError();
-    std::clog << "ClickHouse InsertMetrics error: " << e.what() << '\n';
+    spdlog::error("ClickHouse InsertMetrics error: {}", e.what());
     return false;
   }
 }
@@ -526,12 +537,12 @@ bool ClickHouseWriter::InsertLogs(const std::vector<otlp_decoder::LogRow>& rows)
 
     client.Insert("otel_logs", block);
     telemetry::RecordClickHouseRowsInserted(static_cast<uint64_t>(rows.size()));
-    std::clog << "inserted logs rows=" << rows.size() << '\n';
+    spdlog::info("inserted logs rows={}", rows.size());
     return true;
   } catch (const std::exception& e) {
     impl_->ResetClient();
     telemetry::RecordClickHouseInsertError();
-    std::clog << "ClickHouse InsertLogs error: " << e.what() << '\n';
+    spdlog::error("ClickHouse InsertLogs error: {}", e.what());
     return false;
   }
 }
