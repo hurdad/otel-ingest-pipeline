@@ -5,54 +5,140 @@
   "tags": ["otel", "clickhouse", "metrics"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
-  "time": {
-    "from": "now-15m",
-    "to": "now"
-  },
+  "time": { "from": "now-1h", "to": "now" },
   "panels": [
     {
-      "type": "timeseries",
-      "title": "Metric points ingested (1m)",
+      "type": "stat",
+      "title": "Gauge Points",
       "id": 1,
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse"
-      },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 0,
+        "rawSql": "SELECT count() AS value FROM otel.otel_metrics_gauge WHERE $__timeFilter(TimeUnix)" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Sum Points",
+      "id": 2,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 0,
+        "rawSql": "SELECT count() AS value FROM otel.otel_metrics_sum WHERE $__timeFilter(TimeUnix)" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Histogram Points",
+      "id": 3,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 0,
+        "rawSql": "SELECT count() AS value FROM otel.otel_metrics_histogram WHERE $__timeFilter(TimeUnix)" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Active Services",
+      "id": 4,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 0,
+        "rawSql": "SELECT uniq(ServiceName) AS value FROM otel.otel_metrics_sum WHERE $__timeFilter(TimeUnix)" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Metrics Ingestion Rate by Type",
+      "id": 5,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
       "targets": [
-        {
-          "refId": "A",
-          "queryType": "sql",
-          "format": 1,
-          "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, count() AS points FROM otel.otel_metrics_sum WHERE $__timeFilter(TimeUnix) GROUP BY time ORDER BY time"
-        }
+        { "refId": "A", "queryType": "sql", "format": 1,
+          "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, count() AS gauge FROM otel.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) GROUP BY time ORDER BY time" },
+        { "refId": "B", "queryType": "sql", "format": 1,
+          "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, count() AS sum FROM otel.otel_metrics_sum WHERE $__timeFilter(TimeUnix) GROUP BY time ORDER BY time" },
+        { "refId": "C", "queryType": "sql", "format": 1,
+          "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, count() AS histogram FROM otel.otel_metrics_histogram WHERE $__timeFilter(TimeUnix) GROUP BY time ORDER BY time" }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "tooltip": { "mode": "multi", "sort": "desc" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum", "mean"] } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 }
     },
     {
       "type": "table",
-      "title": "Top metric names",
-      "id": 2,
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "clickhouse"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "queryType": "sql",
-          "format": 1,
-          "rawSql": "SELECT MetricName, ServiceName, count() AS samples FROM otel.otel_metrics_sum WHERE $__timeFilter(TimeUnix) GROUP BY MetricName, ServiceName ORDER BY samples DESC LIMIT 20"
-        }
-      ],
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+      "title": "Top Metric Names",
+      "id": 6,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 0,
+        "rawSql": "SELECT MetricName, ServiceName, MetricUnit, count() AS samples, round(avg(Value), 4) AS avg_value, round(min(Value), 4) AS min_value, round(max(Value), 4) AS max_value FROM otel.otel_metrics_sum WHERE $__timeFilter(TimeUnix) GROUP BY MetricName, ServiceName, MetricUnit ORDER BY samples DESC LIMIT 25" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "sortBy": [{ "displayName": "samples", "desc": true }] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Request Rate (per minute)",
+      "id": 7,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 1,
+        "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, ServiceName, sum(Count) AS requests FROM otel.otel_metrics_histogram WHERE MetricName LIKE '%http.server%' AND $__timeFilter(TimeUnix) GROUP BY time, ServiceName ORDER BY time" }],
+      "fieldConfig": { "defaults": { "unit": "reqpm", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "tooltip": { "mode": "multi", "sort": "desc" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Request Duration Avg (ms)",
+      "id": 8,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 1,
+        "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, ServiceName, round(sum(Sum) / nullIf(sum(Count), 0) * 1000, 2) AS avg_ms FROM otel.otel_metrics_histogram WHERE MetricName LIKE '%http.server%' AND Count > 0 AND $__timeFilter(TimeUnix) GROUP BY time, ServiceName ORDER BY time" }],
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "tooltip": { "mode": "multi", "sort": "desc" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 }
+    },
+    {
+      "type": "timeseries",
+      "title": "System CPU Time (by state)",
+      "id": 9,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 1,
+        "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, Attributes['state'] AS cpu_state, round(avg(Value), 4) AS value FROM otel.otel_metrics_sum WHERE MetricName = 'system.cpu.time' AND $__timeFilter(TimeUnix) GROUP BY time, cpu_state ORDER BY time" }],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "tooltip": { "mode": "multi", "sort": "desc" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean"] } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 }
+    },
+    {
+      "type": "timeseries",
+      "title": "System Memory Usage (bytes)",
+      "id": 10,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 1,
+        "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, Attributes['state'] AS mem_state, round(avg(Value), 0) AS bytes FROM otel.otel_metrics_sum WHERE MetricName = 'system.memory.usage' AND $__timeFilter(TimeUnix) GROUP BY time, mem_state ORDER BY time" }],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "tooltip": { "mode": "multi", "sort": "desc" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Gauge Metrics by Name",
+      "id": 11,
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{ "refId": "A", "queryType": "sql", "format": 1,
+        "rawSql": "SELECT toStartOfInterval(TimeUnix, INTERVAL 1 minute) AS time, concat(ServiceName, ' / ', MetricName) AS metric, round(avg(Value), 4) AS value FROM otel.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) GROUP BY time, metric ORDER BY time LIMIT 10000" }],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "tooltip": { "mode": "multi", "sort": "desc" }, "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "last", "max"] } },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 }
     }
   ]
 }
