@@ -7,6 +7,11 @@ services:
       - "8222:8222"
     volumes:
       - nats-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
@@ -20,11 +25,17 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./scripts/clickhouse_schema.sql:/docker-entrypoint-initdb.d/01-otel-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   jetstream-init:
     image: natsio/nats-box:0.16.0
     depends_on:
-      - nats
+      nats:
+        condition: service_healthy
     restart: "no"
     entrypoint: /bin/sh
     command:
@@ -53,9 +64,11 @@ services:
       target: gateway
     depends_on:
       nats:
-        condition: service_started
+        condition: service_healthy
       jetstream-init:
         condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
     ports:
       - "4320:4320"
     volumes:
@@ -73,11 +86,11 @@ services:
       target: loader
     depends_on:
       nats:
-        condition: service_started
+        condition: service_healthy
       jetstream-init:
         condition: service_completed_successfully
       clickhouse:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./configs/loader.yaml:/etc/otel-pipeline/loader.yaml:ro
     environment:
@@ -89,7 +102,6 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.104.0
     depends_on:
-      - otlp-gateway
       - hyperdx
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
@@ -99,19 +111,25 @@ services:
       - "8888:8888"
 
   hyperdx:
-    image: hyperdx/hyperdx-local:latest
+    image: docker.hyperdx.io/hyperdx/hyperdx
     depends_on:
-      - clickhouse
+      clickhouse:
+        condition: service_healthy
+      db:
+        condition: service_started
     environment:
-      HYPERDX_LOG_LEVEL: "0"
+      HYPERDX_LOG_LEVEL: "info"
+      MONGO_URI: "mongodb://db:27017/hyperdx"
       FRONTEND_URL: "http://localhost:8090"
-      CLICKHOUSE_ENDPOINT: "tcp://clickhouse:9000?dial_timeout=10s"
-      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: "otel"
-      DEFAULT_CONNECTIONS: '[{"name":"Pipeline ClickHouse","host":"http://localhost:8123","username":"otel","password":"otel"}]'
+      DEFAULT_CONNECTIONS: '[{"name":"ClickHouse","host":"http://clickhouse:8123","username":"otel","password":"otel"}]'
       DEFAULT_SOURCES: '[{"from":{"databaseName":"otel","tableName":"otel_logs"},"kind":"log","timestampValueExpression":"TimestampTime","name":"Logs","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Pipeline ClickHouse","traceSourceId":"Traces","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"otel","tableName":"otel_traces"},"kind":"trace","timestampValueExpression":"Timestamp","name":"Traces","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"SpanName","serviceNameExpression":"ServiceName","eventAttributesExpression":"SpanAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,StatusCode,round(Duration/1e6),SpanName","traceIdExpression":"TraceId","spanIdExpression":"SpanId","durationExpression":"Duration","durationPrecision":9,"parentSpanIdExpression":"ParentSpanId","spanNameExpression":"SpanName","spanKindExpression":"SpanKind","statusCodeExpression":"StatusCode","statusMessageExpression":"StatusMessage","connection":"Pipeline ClickHouse","logSourceId":"Logs","sessionSourceId":"Sessions","metricSourceId":"Metrics"},{"from":{"databaseName":"otel","tableName":""},"kind":"metric","timestampValueExpression":"TimeUnix","name":"Metrics","resourceAttributesExpression":"ResourceAttributes","metricTables":{"gauge":"otel_metrics_gauge","histogram":"otel_metrics_histogram","sum":"otel_metrics_sum","summary":"otel_metrics_summary","exponentialHistogram":"otel_metrics_exponentialhistogram"},"connection":"Pipeline ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","sessionSourceId":"Sessions"},{"from":{"databaseName":"otel","tableName":"hyperdx_sessions"},"kind":"session","timestampValueExpression":"TimestampTime","name":"Sessions","displayedTimestampValueExpression":"Timestamp","implicitColumnExpression":"Body","serviceNameExpression":"ServiceName","bodyExpression":"Body","eventAttributesExpression":"LogAttributes","resourceAttributesExpression":"ResourceAttributes","defaultTableSelectExpression":"Timestamp,ServiceName,SeverityText,Body","severityTextExpression":"SeverityText","traceIdExpression":"TraceId","spanIdExpression":"SpanId","connection":"Pipeline ClickHouse","logSourceId":"Logs","traceSourceId":"Traces","metricSourceId":"Metrics"}]'
     ports:
       - "8090:8080"
 
+  db:
+    image: mongo:5.0.32-focal
+    volumes:
+      - mongo-data:/data/db
 
   grafana:
     image: grafana/grafana:11.1.4
@@ -136,6 +154,7 @@ services:
       - otel-collector
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: fastapi-rest-sample
       DEPLOYMENT_ENV: docker-compose
     ports:
@@ -163,3 +182,4 @@ volumes:
   nats-data:
   clickhouse-data:
   grafana-data:
+  mongo-data:
