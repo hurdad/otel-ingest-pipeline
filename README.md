@@ -52,12 +52,47 @@ Self-telemetry (gateway + loader → otel-collector → otlp-gateway):
   OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317  (insecure gRPC)
 
 Observability UI:
-  HyperDX  :8090  (MongoDB internal)
+  HyperDX  :8090  (separate MongoDB service on :27017)
+  Grafana   :3000  (ClickHouse datasource, pre-provisioned dashboards)
 ```
 
 The repository contains two C++20 services:
 - `otlp-gateway`: OTLP gRPC ingest service implementing traces/metrics/logs collector APIs.
 - `jetstream-clickhouse-loader`: JetStream consumer that decodes OTLP protobuf payloads and batches inserts into ClickHouse.
+
+## Design benefits
+
+**Durability and backpressure**
+
+NATS JetStream is a persistent queue, not just a pub/sub bus. If ClickHouse is slow, restarting, or under load, messages accumulate in JetStream (up to 24h retention) rather than being dropped. The gateway never blocks waiting for a database write.
+
+**Decoupled write path**
+
+The gateway and loader are completely independent processes. You can restart, redeploy, or scale either one without affecting the other. The loader resumes from its durable consumer position after a crash rather than losing data.
+
+**Batching at the loader, not the gateway**
+
+The gateway does one thing: receive OTLP, serialize the protobuf, publish to JetStream. All batching logic (50k rows or 2s flush interval) lives in the loader. This keeps the gateway lean and low-latency, and batch tuning requires no changes to the ingest path.
+
+**Schema isolation**
+
+ClickHouse schema changes (adding columns, altering indexes, TTL changes) only affect the loader. The gateway is shielded from the storage layer entirely.
+
+**Fan-out ready**
+
+Because data lives in named JetStream subjects (`otel.traces`, `otel.metrics`, `otel.logs`), additional consumers can be added — a second loader writing to a different database, an alerting consumer, a stream processor — without modifying the gateway.
+
+**Horizontal scalability**
+
+Multiple loader instances can consume from the same JetStream stream using durable consumers. JetStream handles message distribution; each loader processes its share independently.
+
+**Self-telemetry without a bootstrap problem**
+
+The gateway and loader export their own OTLP telemetry to the OTel Collector rather than directly back into themselves. Internal spans and metrics flow through the same pipeline as application data, giving full observability of the pipeline without circular dependencies.
+
+**Protobuf preserved end-to-end**
+
+The gateway publishes raw protobuf bytes — the exact OTLP wire format — directly to JetStream with no transcoding. The loader decodes them natively. There is no format conversion in the hot path and no information loss.
 
 ## Quick start (Docker Compose)
 
@@ -79,7 +114,7 @@ A Python sample REST app is available at `examples/fastapi-rest-otel`.
 It uses:
 - `fastapi` + `uvicorn`
 - `opentelemetry-sdk`
-- OTLP gRPC exporter to send traces to OpenTelemetry Collector
+- OTLP gRPC exporter to send traces, metrics, and logs to OpenTelemetry Collector
 
 Quick run:
 
@@ -91,7 +126,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Default exporter endpoint: `http://localhost:4317`
+Default exporter endpoint: `localhost:4317` (insecure gRPC; no `http://` prefix)
 
 See `examples/fastapi-rest-otel/README.md` for Docker usage, Locust load generation, and test requests.
 
@@ -145,7 +180,7 @@ Configuration examples are in `configs/gateway.yaml` and `configs/loader.yaml`.
 
 Both gateway and loader use `libs/telemetry` self-instrumentation built on `opentelemetry-cpp` SDK:
 - traces: internal operation spans (gRPC handling, JetStream operations, ClickHouse writes)
-- metrics: `self_telemetry.spans_total` counter and `self_telemetry.span_duration_ms` histogram
+- metrics: counters and histograms for internal operations (see `libs/telemetry` for exact metric names)
 - logs: structured SDK logs emitted by the telemetry runtime
 
 When `OTEL_EXPORTER_OTLP_ENDPOINT` is empty, self-telemetry exporters are disabled.
@@ -208,33 +243,6 @@ Included binaries in the final image:
 By default, the container starts `otlp-gateway`.
 
 
-## Jemalloc support and tuning
-
-jemalloc is a required dependency and is always linked into both service binaries (`otlp-gateway`, `jetstream-clickhouse-loader`). `LD_PRELOAD` is not required.
-
-You can tune allocator behavior using `MALLOC_CONF`. Example values:
-
-```bash
-# Lower fragmentation in long-running workloads
-export MALLOC_CONF=background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000
-
-# More aggressive page purging under memory pressure
-export MALLOC_CONF=background_thread:true,dirty_decay_ms:250,muzzy_decay_ms:250
-```
-
-Validation checklist:
-
-```bash
-# Verify jemalloc is linked
-ldd /usr/local/bin/otlp-gateway | grep jemalloc
-ldd /usr/local/bin/jetstream-clickhouse-loader | grep jemalloc
-
-# Optional allocator stats at process exit
-MALLOC_CONF=stats_print:true /usr/local/bin/otlp-gateway --config /etc/otel/gateway.yaml
-```
-
-For before/after memory-pressure comparisons, run the same ingest load profile twice (jemalloc off vs on), then compare RSS/heap metrics and allocator stats output over identical windows.
-
 ## Docker Compose full pipeline
 
 A ready-to-run compose stack is provided in `docker-compose.yml` with:
@@ -246,7 +254,9 @@ A ready-to-run compose stack is provided in `docker-compose.yml` with:
 - JetStream loader (`jetstream-clickhouse-loader`)
 - FastAPI sample app (`fastapi-rest-sample`) — exposed on `:8080`
 - Locust headless load generator (`fastapi-rest-sample-loadgen`)
-- HyperDX (`hyperdx`) — observability UI on `:8090` (MongoDB bundled internally)
+- HyperDX (`hyperdx`) — observability UI on `:8090`
+- MongoDB (`db`) — backing store for HyperDX
+- Grafana (`grafana`) — metrics/traces/logs dashboards on `:3000` (admin/admin)
 
 Start everything:
 
@@ -260,6 +270,20 @@ Send OTLP data to the collector at:
 The collector forwards telemetry to the gateway on `:4320`, which publishes to JetStream subjects (`otel.traces`, `otel.metrics`, `otel.logs`).
 
 ClickHouse tables are auto-created from `scripts/clickhouse_schema.sql` at container startup.
+
+## Grafana
+
+Grafana is available at `http://localhost:3000` (credentials: `admin` / `admin`).
+
+The ClickHouse datasource is provisioned automatically via `configs/grafana/provisioning/datasources/clickhouse.yml`. Three dashboards are pre-loaded from `configs/grafana/dashboards/`:
+
+| Dashboard | UID | Description |
+| --- | --- | --- |
+| OTel Logs Overview | `otel-logs` | Log volume, severity distribution, error rate, recent error logs |
+| OTel Traces Overview | `otel-traces` | Span volume, error rate, latency percentiles (P50/P95/P99), top operations, slowest spans |
+| OTel Metrics Overview | `otel-metrics` | Gauge/sum/histogram ingestion rates, top metric names, HTTP request rate and duration, system CPU and memory |
+
+All dashboards query ClickHouse directly using the `grafana-clickhouse-datasource` plugin and default to a 1-hour time window with 10-second auto-refresh.
 
 ## Helm chart
 
