@@ -6,10 +6,8 @@ datasources:
     type: grafana-clickhouse-datasource
     access: proxy
     url: http://clickhouse:8123
-    basicAuth: true
-    basicAuthUser: otel
     secureJsonData:
-      basicAuthPassword: otel
+      password: otel
     jsonData:
       defaultDatabase: otel
       server: clickhouse
@@ -17,3 +15,26 @@ datasources:
       protocol: http
       username: otel
       tlsSkipVerify: true
+      logs:
+        defaultDatabase: otel
+        defaultTable: otel_logs
+        otelEnabled: true
+        otelVersion: latest
+        timeColumn: Timestamp
+        logLevelColumn: SeverityText
+        logMessageColumn: Body
+      traces:
+        defaultDatabase: otel
+        defaultTable: otel_traces
+        otelEnabled: true
+        otelVersion: latest
+        traceIdColumn: TraceId
+        spanIdColumn: SpanId
+        operationNameColumn: SpanName
+        parentSpanIdColumn: ParentSpanId
+        serviceNameColumn: ServiceName
+        durationColumn: Duration
+        durationUnit: nanoseconds
+        startTimeColumn: Timestamp
+        tagsColumn: SpanAttributes
+        serviceTagsColumn: ResourceAttributes
