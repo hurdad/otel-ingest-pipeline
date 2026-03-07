@@ -85,6 +85,6 @@ COPY --from=builder /opt/otel/bin/jetstream-clickhouse-loader /usr/local/bin/jet
 USER otel
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD grep -q "jetstream" /proc/1/status || exit 1
+    CMD test -f /tmp/loader.ready || exit 1
 
 ENTRYPOINT ["/usr/local/bin/jetstream-clickhouse-loader"]

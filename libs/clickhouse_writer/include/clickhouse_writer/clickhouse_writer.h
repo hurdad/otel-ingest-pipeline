@@ -35,6 +35,11 @@ class BatchInsert {
 
   template <typename Inserter>
   void Add(T row, const Inserter& inserter) {
+    // Cap accumulated rows to prevent OOM during persistent ClickHouse failure.
+    if (rows_.size() >= max_rows_ * 10) {
+      rows_.clear();
+      last_flush_ = std::chrono::steady_clock::now();
+    }
     rows_.emplace_back(std::move(row));
     const auto now = std::chrono::steady_clock::now();
     if (rows_.size() >= max_rows_ || now - last_flush_ >= flush_interval_) {
@@ -54,6 +59,8 @@ class BatchInsert {
       }
     }
   }
+
+  bool HasPendingRows() const { return !rows_.empty(); }
 
  private:
   size_t max_rows_;

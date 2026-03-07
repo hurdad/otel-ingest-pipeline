@@ -1,5 +1,6 @@
 #include "otlp_decoder/decoder.h"
 
+#include <cstdio>
 #include <sstream>
 
 #include "opentelemetry/proto/collector/logs/v1/logs_service.pb.h"
@@ -53,6 +54,36 @@ std::string BytesToHex(const std::string& bytes) {
   return out;
 }
 
+// Forward declaration for mutual recursion between AnyValueToString and AnyValueToJsonToken.
+std::string AnyValueToString(const opentelemetry::proto::common::v1::AnyValue& value);
+
+// Returns the JSON representation of a scalar string (double-quoted, escaped).
+std::string JsonQuoteString(const std::string& s) {
+  std::string out;
+  out.push_back('"');
+  for (const char c : s) {
+    switch (c) {
+      case '"':  out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n";  break;
+      case '\r': out += "\\r";  break;
+      case '\t': out += "\\t";  break;
+      default:   out.push_back(c); break;
+    }
+  }
+  out.push_back('"');
+  return out;
+}
+
+// Returns a JSON-safe token: strings are double-quoted; other types use AnyValueToString.
+std::string AnyValueToJsonToken(const opentelemetry::proto::common::v1::AnyValue& value) {
+  using AnyValue = opentelemetry::proto::common::v1::AnyValue;
+  if (value.value_case() == AnyValue::kStringValue) {
+    return JsonQuoteString(value.string_value());
+  }
+  return AnyValueToString(value);
+}
+
 std::string AnyValueToString(const opentelemetry::proto::common::v1::AnyValue& value) {
   using AnyValue = opentelemetry::proto::common::v1::AnyValue;
   switch (value.value_case()) {
@@ -62,8 +93,11 @@ std::string AnyValueToString(const opentelemetry::proto::common::v1::AnyValue& v
       return value.bool_value() ? "true" : "false";
     case AnyValue::kIntValue:
       return std::to_string(value.int_value());
-    case AnyValue::kDoubleValue:
-      return std::to_string(value.double_value());
+    case AnyValue::kDoubleValue: {
+      char buf[32];
+      std::snprintf(buf, sizeof(buf), "%.17g", value.double_value());
+      return buf;
+    }
     case AnyValue::kBytesValue:
       return BytesToHex(value.bytes_value());
     case AnyValue::kArrayValue: {
@@ -71,11 +105,9 @@ std::string AnyValueToString(const opentelemetry::proto::common::v1::AnyValue& v
       os << '[';
       bool first = true;
       for (const auto& item : value.array_value().values()) {
-        if (!first) {
-          os << ',';
-        }
+        if (!first) os << ',';
         first = false;
-        os << AnyValueToString(item);
+        os << AnyValueToJsonToken(item);
       }
       os << ']';
       return os.str();
@@ -85,11 +117,9 @@ std::string AnyValueToString(const opentelemetry::proto::common::v1::AnyValue& v
       os << '{';
       bool first = true;
       for (const auto& kv : value.kvlist_value().values()) {
-        if (!first) {
-          os << ',';
-        }
+        if (!first) os << ',';
         first = false;
-        os << kv.key() << ':' << AnyValueToString(kv.value());
+        os << JsonQuoteString(kv.key()) << ':' << AnyValueToJsonToken(kv.value());
       }
       os << '}';
       return os.str();

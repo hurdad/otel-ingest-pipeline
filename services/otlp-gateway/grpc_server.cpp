@@ -1,5 +1,6 @@
 #include "grpc_server.h"
 
+#include <chrono>
 #include <fstream>
 #include <stdexcept>
 
@@ -116,6 +117,6 @@ void OtlpGrpcServer::Run() {
 
 void OtlpGrpcServer::Shutdown() {
   if (server_) {
-    server_->Shutdown();
+    server_->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(5));
   }
 }

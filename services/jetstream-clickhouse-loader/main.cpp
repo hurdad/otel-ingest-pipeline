@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <fstream>
 #include <limits>
 #include <mutex>
 #include <pthread.h>
@@ -118,6 +119,9 @@ int main() {
     std::mutex consumer_exception_mutex;
     std::exception_ptr consumer_exception;
 
+    // Signal readiness for healthcheck.
+    std::ofstream("/tmp/loader.ready");
+
     std::thread consumer_thread([&]() {
       try {
         while (running.load(std::memory_order_relaxed)) {
@@ -133,7 +137,10 @@ int main() {
           batcher.FlushAll();
           std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        batcher.FlushAll();
+        if (!batcher.FlushAll()) {
+          spdlog::warn("Shutdown flush incomplete: ClickHouse unavailable, "
+                       "in-flight rows will be lost");
+        }
       } catch (...) {
         {
           std::lock_guard<std::mutex> lock(consumer_exception_mutex);

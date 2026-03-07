@@ -180,7 +180,11 @@ Configuration examples are in `configs/gateway.yaml` and `configs/loader.yaml`.
 
 Both gateway and loader use `libs/telemetry` self-instrumentation built on `opentelemetry-cpp` SDK:
 - traces: internal operation spans (gRPC handling, JetStream operations, ClickHouse writes)
-- metrics: counters and histograms for internal operations (see `libs/telemetry` for exact metric names)
+- metrics:
+  - `self_telemetry.spans_total` (counter) — total internal spans recorded
+  - `self_telemetry.span_duration_ms` (histogram) — internal span duration in milliseconds
+  - `self_telemetry.clickhouse_writer.rows_inserted_total` (counter) — ClickHouse rows successfully inserted
+  - `self_telemetry.clickhouse_writer.insert_errors_total` (counter) — ClickHouse insert failures
 - logs: structured SDK logs emitted by the telemetry runtime
 
 When `OTEL_EXPORTER_OTLP_ENDPOINT` is empty, self-telemetry exporters are disabled.

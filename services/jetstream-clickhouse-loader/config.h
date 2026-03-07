@@ -30,16 +30,10 @@ inline LoaderConfig LoadConfig(const std::string& path) {
     if (const auto nats = root["nats"]) {
       if (nats["url"])    cfg.nats_url    = nats["url"].as<std::string>();
       if (nats["stream"]) cfg.nats_stream = nats["stream"].as<std::string>();
-    }
-    if (const auto subjects = root["subjects"]) {
-      if (subjects["traces"]) {
-        cfg.trace_subject = subjects["traces"].as<std::string>();
-      }
-      if (subjects["metrics"]) {
-        cfg.metric_subject = subjects["metrics"].as<std::string>();
-      }
-      if (subjects["logs"]) {
-        cfg.log_subject = subjects["logs"].as<std::string>();
+      if (const auto subjects = nats["subjects"]) {
+        if (subjects["traces"])  cfg.trace_subject  = subjects["traces"].as<std::string>();
+        if (subjects["metrics"]) cfg.metric_subject = subjects["metrics"].as<std::string>();
+        if (subjects["logs"])    cfg.log_subject    = subjects["logs"].as<std::string>();
       }
     }
     if (const auto ch = root["clickhouse"]) {
@@ -56,8 +50,10 @@ inline LoaderConfig LoadConfig(const std::string& path) {
         cfg.flush_interval =
             std::chrono::seconds(batch["flush_interval_seconds"].as<uint32_t>());
     }
+  } catch (const YAML::BadFile&) {
+    std::clog << "Config file not found at " << path << ", using defaults\n";
   } catch (const YAML::Exception& e) {
-    std::clog << "Warning: failed to load config from " << path << ": " << e.what() << '\n';
+    throw std::runtime_error("Failed to parse config " + path + ": " + e.what());
   }
   return cfg;
 }

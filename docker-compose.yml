@@ -96,6 +96,7 @@ services:
     volumes:
       - ./configs/loader.yaml:/etc/otel-pipeline/loader.yaml:ro
     environment:
+      CLICKHOUSE_PASSWORD: otel
       OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: jetstream-clickhouse-loader

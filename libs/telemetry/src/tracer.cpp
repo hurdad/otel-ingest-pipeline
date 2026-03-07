@@ -336,7 +336,7 @@ class TelemetryRuntime {
     std::vector<spdlog::sink_ptr> sinks{stdout_sink, otlp_sink};
     auto app_logger = std::make_shared<spdlog::logger>("otel-pipeline", sinks.begin(), sinks.end());
     app_logger->set_level(spdlog::level::info);
-    app_logger->flush_on(spdlog::level::warn);
+    app_logger->flush_on(spdlog::level::info);
     spdlog::set_default_logger(app_logger);
 
     // Route otel-cpp internal logs to stdout only to prevent recursive log exporting.

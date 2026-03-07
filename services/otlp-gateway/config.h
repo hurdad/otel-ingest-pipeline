@@ -41,8 +41,10 @@ inline GatewayConfig LoadConfig(const std::string& path) {
       if (subjects["metrics"]) cfg.metric_subject = subjects["metrics"].as<std::string>();
       if (subjects["logs"])    cfg.log_subject    = subjects["logs"].as<std::string>();
     }
+  } catch (const YAML::BadFile&) {
+    std::clog << "Config file not found at " << path << ", using defaults\n";
   } catch (const YAML::Exception& e) {
-    std::clog << "Warning: failed to load config from " << path << ": " << e.what() << '\n';
+    throw std::runtime_error("Failed to parse config " + path + ": " + e.what());
   }
   return cfg;
 }

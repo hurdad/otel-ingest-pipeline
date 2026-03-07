@@ -37,11 +37,14 @@ class ClickHouseBatcher {
     }
   }
 
-  void FlushAll() {
+  // Returns true if all pending rows were flushed, false if any remain.
+  bool FlushAll() {
     auto span = telemetry::StartSpan("batch_flush");
     trace_batch_.Flush([this](const auto& rows) { return writer_.InsertTraces(rows); });
     metric_batch_.Flush([this](const auto& rows) { return writer_.InsertMetrics(rows); });
     log_batch_.Flush([this](const auto& rows) { return writer_.InsertLogs(rows); });
+    return !trace_batch_.HasPendingRows() && !metric_batch_.HasPendingRows() &&
+           !log_batch_.HasPendingRows();
   }
 
  private:
