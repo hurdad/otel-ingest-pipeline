@@ -84,6 +84,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: loader
+    deploy:
+      replicas: 2
     depends_on:
       nats:
         condition: service_healthy
